@@ -56,6 +56,24 @@ export default function DocsSection({ theme }: { theme: ThemeConfig }) {
     window.open(`${API_BASE}/api/library/download?path=${encodeURIComponent(path)}`, '_blank');
   };
 
+  const handleDownloadDoc = async (e: React.MouseEvent, path: string, filename: string) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/api/library/download?path=${encodeURIComponent(path)}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(`${API_BASE}/api/library/download?path=${encodeURIComponent(path)}`, '_blank');
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
       {/* Header */}
@@ -134,6 +152,30 @@ export default function DocsSection({ theme }: { theme: ThemeConfig }) {
                       <div style={{ fontSize: 11, color: theme.dim, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {doc.filename}
                       </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOpenDoc(doc.path); }}
+                        style={{
+                          flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 600,
+                          background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`,
+                          borderRadius: 6, color: theme.dim, cursor: 'pointer',
+                        }}
+                      >
+                        👁 Ver
+                      </button>
+                      <button
+                        onClick={(e) => handleDownloadDoc(e, doc.path, doc.filename)}
+                        style={{
+                          flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 600,
+                          background: `${accent}18`, border: `1px solid ${accent}50`,
+                          borderRadius: 6, color: accent, cursor: 'pointer',
+                        }}
+                      >
+                        ⬇ Descargar
+                      </button>
                     </div>
                   </div>
                 ))}
