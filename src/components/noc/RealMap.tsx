@@ -108,6 +108,7 @@ const MAP_TILES = [
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     opts: { subdomains: 'abcd', maxZoom: 18 },
     filter: 'invert(100%) hue-rotate(180deg) brightness(90%) contrast(90%) saturate(0.8)',
+    overlay: null,
   },
   {
     id: 'satellite',
@@ -115,6 +116,15 @@ const MAP_TILES = [
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     opts: { maxZoom: 18 },
     filter: 'brightness(1.05) saturate(1.2)',
+    overlay: null,
+  },
+  {
+    id: 'hybrid',
+    label: 'Híbrido',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    opts: { maxZoom: 18 },
+    filter: 'brightness(1.05) saturate(1.1)',
+    overlay: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
   },
   {
     id: 'light',
@@ -122,6 +132,7 @@ const MAP_TILES = [
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     opts: { subdomains: 'abcd', maxZoom: 18 },
     filter: 'brightness(0.95)',
+    overlay: null,
   },
   {
     id: 'osm',
@@ -129,6 +140,7 @@ const MAP_TILES = [
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     opts: { subdomains: 'abc', maxZoom: 19 },
     filter: 'brightness(0.92) saturate(0.9)',
+    overlay: null,
   },
 ] as const;
 type MapTileId = typeof MAP_TILES[number]['id'];
@@ -162,7 +174,8 @@ export default function RealMap({
   const layerRef      = useRef<any>(null);
   const odooLayerRef  = useRef<any>(null);
   const rbLayerRef    = useRef<any>(null);
-  const tileLayerRef  = useRef<any>(null);
+  const tileLayerRef    = useRef<any>(null);
+  const overlayLayerRef = useRef<any>(null);
   const vendorLayerRefs = useRef<Partial<Record<VendorId, any>>>({});
   const svgRef        = useRef<SVGSVGElement | null>(null);
   const citiesRef     = useRef<NOCCity[]>(cities);
@@ -240,9 +253,19 @@ export default function RealMap({
     const L   = leafRef.current;
     if (!map || !L) return;
     const tile = MAP_TILES.find(t => t.id === mapType) ?? MAP_TILES[0];
-    if (tileLayerRef.current) { map.removeLayer(tileLayerRef.current); }
+
+    // Remove previous base + overlay
+    if (tileLayerRef.current)   { map.removeLayer(tileLayerRef.current); }
+    if (overlayLayerRef.current) { map.removeLayer(overlayLayerRef.current); overlayLayerRef.current = null; }
+
     tileLayerRef.current = L.tileLayer(tile.url, tile.opts).addTo(map);
-    // Apply per-tile CSS filter
+
+    // Add labels overlay for hybrid
+    if (tile.overlay) {
+      overlayLayerRef.current = L.tileLayer(tile.overlay, { maxZoom: 18, opacity: 0.9 }).addTo(map);
+    }
+
+    // Apply per-tile CSS filter to the tile pane
     const pane = document.querySelector(`#${containerId} .leaflet-tile-pane`) as HTMLElement | null;
     if (pane) pane.style.filter = tile.filter;
   }, [mapType]);
