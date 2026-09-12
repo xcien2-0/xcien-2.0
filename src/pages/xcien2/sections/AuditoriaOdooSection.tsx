@@ -87,7 +87,7 @@ export default function AuditoriaOdooSection({ theme }: { theme: ThemeConfig }) 
 
   if (error || !data) return (
     <div style={{ padding: 24, color: '#EF4444' }}>
-      Error al conectar con Odoo: {error || 'sin datos'}
+      No se pudo conectar con Odoo: {error || 'sin respuesta del servidor'}
     </div>
   );
 

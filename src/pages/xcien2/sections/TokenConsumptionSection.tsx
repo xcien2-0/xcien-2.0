@@ -107,7 +107,7 @@ function DailyChart({ daily, theme }: { daily: DailyPoint[]; theme: ThemeConfig 
 
   if (!last14.length) return (
     <div style={{ textAlign: 'center', padding: '40px 0', color: theme.dim, fontSize: 13 }}>
-      Sin datos aún — el tracking se activa con la primera llamada a la IA
+      Aún sin datos — el primer uso de la IA registrará el consumo aquí.
     </div>
   );
 

@@ -115,7 +115,7 @@ const VEHICULOS_INICIAL: Vehiculo[] = [
     tn360_id: 3330,
     mantenimiento: {
       garantia_vigente: true,
-      observacion: 'Sin datos de último servicio registrado aún.',
+      observacion: 'Aún sin historial de servicio registrado',
     },
     hallazgos: [
       {

@@ -530,7 +530,7 @@ export default function OrgTreeView({ empleados, theme }: Props) {
             {detailLoading && (
               <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:20, gap:8 }}>
                 <div style={{ width:16, height:16, border:`2px solid ${empColor}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
-                <span style={{ fontSize:11, color:dim }}>Cargando…</span>
+                <span style={{ fontSize:11, color:dim }}>Cargando organigrama…</span>
                 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
               </div>
             )}

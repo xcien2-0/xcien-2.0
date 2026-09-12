@@ -263,7 +263,7 @@ function PayloadViewer({ payload, domain, theme }: { payload: Record<string, any
 
   // Generic viewer for other domains
   const entries = Object.entries(payload).filter(([k]) => !SKIP.includes(k) && payload[k] !== null);
-  if (!entries.length) return <div style={{ fontSize: 10, color: theme.dim }}>Sin datos adicionales</div>;
+  if (!entries.length) return <div style={{ fontSize: 10, color: theme.dim }}>Sin datos adicionales registrados</div>;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
@@ -780,7 +780,7 @@ export default function XcienTokensSection({ theme }: { theme: ThemeConfig }) {
           </div>
 
           {loading ? (
-            <div style={{ color: theme.dim, textAlign: 'center', padding: 40 }}>Cargando...</div>
+            <div style={{ color: theme.dim, textAlign: 'center', padding: 40 }}>Cargando historial de tokens…</div>
           ) : filtered.length === 0 ? (
             <div style={{ background: theme.card, border: `1px dashed ${theme.border}`, borderRadius: 8, padding: 40, textAlign: 'center' as const }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>🔖</div>

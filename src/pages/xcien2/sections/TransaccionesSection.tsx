@@ -194,7 +194,7 @@ function NuevaTxForm({ theme, accent, onSuccess, onClose, editTx }: {
           precio_preferencial: parseFloat(form.precio_preferencial) || 0,
         }),
       });
-      if (!res.ok) { const d = await res.json(); setError(d.detail || 'Error al guardar.'); return; }
+      if (!res.ok) { const d = await res.json(); setError(d.detail || 'No se pudieron guardar los cambios.'); return; }
       onSuccess();
       onClose();
     } catch { setError('No se pudo conectar al servidor.'); }

@@ -118,7 +118,7 @@ export default function ImpactoSection() {
     fetch(`${API_BASE}/api/impacto/resumen`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(setData)
-      .catch(e => setError(`Error cargando datos: ${e}`))
+      .catch(() => setError('No se pudieron cargar los datos de impacto. Intenta de nuevo.'))
       .finally(() => setLoading(false));
   }, []);
 

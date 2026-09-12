@@ -577,7 +577,7 @@ function PanoramaView({ theme, stats, statsLoaded }: {
               Distribución por nivel
             </div>
             {!statsLoaded ? (
-              <div style={{ color: DIM, fontSize: 13 }}>Cargando...</div>
+              <div style={{ color: DIM, fontSize: 13 }}>Cargando cursos…</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {LEVELS.map(lv => {
@@ -605,7 +605,7 @@ function PanoramaView({ theme, stats, statsLoaded }: {
             </div>
             {top5.length === 0 ? (
               <div style={{ color: DIM, fontSize: 13 }}>
-                {statsLoaded ? 'Sin datos disponibles' : 'Cargando...'}
+                {statsLoaded ? 'Sin información disponible aún' : 'Calculando estadísticas…'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1281,7 +1281,7 @@ function NuevaPromocionModal({ theme, onClose, onCreated }: { theme: ThemeConfig
         body: JSON.stringify({ candidato: form.candidato.trim(), puesto_anterior: form.puesto_anterior, puesto_nuevo: form.puesto_nuevo, notas: form.notas, registrado_por: form.registrado_por }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || 'Error al iniciar');
+      if (!r.ok) throw new Error(d.detail || 'No se pudo iniciar el examen. Intenta de nuevo.');
       onCreated({ id: d.promocion_id, candidato: form.candidato.trim(), partner_odoo_id: d.partner_odoo_id, user_input_odoo_id: d.user_input_odoo_id, access_token: '', puesto_anterior: form.puesto_anterior, puesto_nuevo: form.puesto_nuevo, examen_id: 0, curso_odoo_id: 0, estado: 'pendiente', score: null, fecha_inicio: new Date().toISOString().slice(0, 10), fecha_completado: null, registrado_por: form.registrado_por, notas: form.notas, certificado_generado: false, link_examen: d.link }, d.link);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error desconocido');
@@ -1445,7 +1445,7 @@ function PromocionView({ theme }: { theme: ThemeConfig }) {
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
             <button onClick={() => fetchPromociones(true)} disabled={loadingProm} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#666', fontSize: 11, cursor: 'pointer' }}>
-              {loadingProm ? 'Cargando...' : 'Sincronizar con Odoo'}
+              {loadingProm ? 'Sincronizando con Odoo…' : 'Sincronizar con Odoo'}
             </button>
           </div>
           {loadingProm ? (

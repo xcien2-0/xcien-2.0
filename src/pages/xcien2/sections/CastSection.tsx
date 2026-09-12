@@ -281,7 +281,7 @@ export default function CastSection() {
     try {
       const r = await fetch(`/api/noc/report?periodo=${periodo}`, { method: 'POST' });
       const j = await r.json();
-      setSendMsg(j.ok ? `✓ Reporte ${periodo} enviado a Telegram` : '✗ Error al generar PDF');
+      setSendMsg(j.ok ? `✓ Reporte ${periodo} enviado a Telegram` : '✗ No se pudo generar el PDF. Intenta de nuevo.');
     } catch {
       setSendMsg('✗ Error de conexión');
     } finally {
@@ -410,7 +410,7 @@ export default function CastSection() {
           {data ? <DonutChart tickets={tickets} /> : (
             <div style={{ width: 180, height: 180, display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: C.muted, fontSize: 12 }}>
-              {loading ? 'Cargando…' : 'Sin datos'}
+              {loading ? 'Cargando datos…' : 'Sin registros para este período'}
             </div>
           )}
         </div>
@@ -728,7 +728,7 @@ export default function CastSection() {
                 {porAgente.slice(0, 10).map(item => (
                   <HBar key={item.nombre} nombre={item.nombre} total={item.total} max={maxAgente} color={C.blue} />
                 ))}
-                {porAgente.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin datos</p>}
+                {porAgente.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin registros disponibles aún</p>}
               </div>
 
               {/* Por nivel */}
@@ -743,7 +743,7 @@ export default function CastSection() {
                       total={item.total} max={maxNivel} color={seg?.color ?? C.purple} />
                   );
                 })}
-                {porNivel.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin datos</p>}
+                {porNivel.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin registros disponibles aún</p>}
               </div>
 
               {/* Por etapa */}
@@ -754,7 +754,7 @@ export default function CastSection() {
                 {porEtapa.slice(0, 10).map(item => (
                   <HBar key={item.nombre} nombre={item.nombre} total={item.total} max={maxEtapa} color={C.amber} />
                 ))}
-                {porEtapa.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin datos</p>}
+                {porEtapa.length === 0 && <p style={{ color: C.muted, fontSize: 11 }}>Sin registros disponibles aún</p>}
               </div>
             </div>
           </div>

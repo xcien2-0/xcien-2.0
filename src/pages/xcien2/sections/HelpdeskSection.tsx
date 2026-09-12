@@ -154,7 +154,7 @@ export default function HelpdeskSection() {
     if (teamId) params.set('team_id', String(teamId));
     const r = await fetch(`/api/helpdesk/reporte-pdf?${params}`, { method: 'POST' });
     setReportLoading(false);
-    setReportMsg(r.ok ? '✅ Reporte enviado a Telegram' : '✗ Error al generar reporte');
+    setReportMsg(r.ok ? '✅ Reporte enviado a Telegram' : '✗ No se pudo generar el reporte. Intenta de nuevo.');
     setTimeout(() => setReportMsg(''), 5000);
   };
 
@@ -456,7 +456,7 @@ export default function HelpdeskSection() {
                   <HBar key={item.nombre} nombre={item.nombre} total={item.total} max={max} color={block.color} />
                 ))}
                 {block.data.length === 0 && (
-                  <p style={{ color: '#4b5563', fontSize: 11 }}>Sin datos</p>
+                  <p style={{ color: '#4b5563', fontSize: 11 }}>Sin tickets en este período</p>
                 )}
               </div>
             );

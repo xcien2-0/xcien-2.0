@@ -75,7 +75,7 @@ export default function UsuariosAdminSection() {
       if (!r.ok) throw new Error(await r.text());
       const json = await r.json();
       setUsuarios(Array.isArray(json) ? json : json.usuarios ?? []);
-    } catch (e: any) { setError(e.message || 'Error al cargar usuarios'); }
+    } catch (e: any) { setError(e.message || 'No se pudo cargar el directorio de usuarios'); }
     finally { setLoading(false); }
   }, []);
 
@@ -120,7 +120,7 @@ export default function UsuariosAdminSection() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
         body: JSON.stringify({ password: newPass }),
       });
-      if (!r.ok) throw new Error('Error al resetear');
+      if (!r.ok) throw new Error('No se pudo resetear el acceso del usuario');
       setResetMsg('Contraseña actualizada'); setNewPass('');
       setTimeout(() => { setResetId(null); setResetMsg(''); }, 1200);
     } catch (e: any) { setResetMsg('Error: ' + e.message); }

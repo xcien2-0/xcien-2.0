@@ -498,7 +498,7 @@ function CampoPDN() {
         />
         {tickets.length === 0 ? (
           <div style={{ padding: '36px 18px', textAlign: 'center', color: DM, fontSize: 12 }}>
-            {loading ? 'Cargando...' : 'Sin tickets asignados'}
+            {loading ? 'Cargando tickets…' : 'Sin tickets asignados a este técnico'}
           </div>
         ) : (
           tickets.slice(0, 10).map((t, i) => {
@@ -1208,7 +1208,7 @@ function KPIsPDN() {
         <SectionHeader icon="◎" title="Clientes SIDF — Piedras Negras" badge={sidf.length} badgeColor={G} />
         {sidf.length === 0 ? (
           <div style={{ padding: '32px 18px', textAlign: 'center', color: DM, fontSize: 12 }}>
-            {loading ? 'Cargando...' : 'Sin clientes SIDF en PDN'}
+            {loading ? 'Cargando clientes…' : 'Sin clientes SIDF registrados en PDN'}
           </div>
         ) : (
           <div style={{ padding: '8px 0' }}>
@@ -1624,7 +1624,7 @@ function LevantamientoTab() {
 
           <SectionCard>
             {loading ? (
-              <div style={{ padding: 32, textAlign: 'center', color: DM }}>Cargando…</div>
+              <div style={{ padding: 32, textAlign: 'center', color: DM }}>Cargando información…</div>
             ) : items.length === 0 ? (
               <div style={{ padding: 32, textAlign: 'center', color: DM }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
@@ -1837,16 +1837,245 @@ function LevantamientoTab() {
   );
 }
 
+// ── OportunidadesTab — CRM Odoo wispi19 ──────────────────────────────────────
+
+interface Oportunidad {
+  id: number;
+  nombre: string;
+  etapa: string;
+  cerrado: boolean;
+  probabilidad: number;
+  ingresos: number;
+  cliente: string;
+  propietario: string;
+  equipo: string;
+  fecha_cierre: string;
+  fecha_creacion: string;
+  prioridad: string;
+}
+
+const ETAPA_COLORS: Record<string, string> = {
+  'nuevo':             BL,
+  'calificado':        BL,
+  'propuesta':         AM,
+  'estudio presencial':AM,
+  'negociacion':       PU,
+  'negociación':       PU,
+  'ganado':            G,
+  'perdido':           RD,
+};
+
+function etapaColor(etapa: string): string {
+  const key = etapa.toLowerCase().replace('> ', '').trim();
+  for (const [k, c] of Object.entries(ETAPA_COLORS)) {
+    if (key.includes(k)) return c;
+  }
+  return DM;
+}
+
+function ProbBar({ pct, color }: { pct: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ flex: 1, height: 5, borderRadius: 3, background: `${color}20`, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width .4s' }} />
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 700, color, minWidth: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
+function OportunidadesTab() {
+  const [opps,    setOpps]    = useState<Oportunidad[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+  const [filtro,  setFiltro]  = useState<'todas' | 'activas' | 'cerradas'>('activas');
+  const [busq,    setBusq]    = useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const token = localStorage.getItem('xcien_token');
+      const r = await fetch(`${API_BASE}/api/blackstone/oportunidades`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      setOpps(d.oportunidades ?? []);
+    } catch (e: any) {
+      setError(e.message ?? 'No se pudo cargar la información');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const visible = opps
+    .filter(o => filtro === 'todas' ? true : filtro === 'activas' ? !o.cerrado : o.cerrado)
+    .filter(o => {
+      if (!busq) return true;
+      const q = busq.toLowerCase();
+      return (o.nombre + o.cliente + o.propietario + o.etapa).toLowerCase().includes(q);
+    });
+
+  const totalIngresos  = opps.filter(o => !o.cerrado).reduce((s, o) => s + o.ingresos, 0);
+  const totalActivas   = opps.filter(o => !o.cerrado).length;
+  const probPromedio   = totalActivas > 0
+    ? Math.round(opps.filter(o => !o.cerrado).reduce((s, o) => s + o.probabilidad, 0) / totalActivas)
+    : 0;
+
+  const fmtMXN = (v: number) => v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+  const fmtFecha = (d: string) => d
+    ? new Date(d + 'T00:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })
+    : '—';
+
+  return (
+    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      {/* KPI strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        {[
+          { label: 'Oportunidades activas', value: loading ? '—' : String(totalActivas), color: BL, icon: '◎' },
+          { label: 'Pipeline total',        value: loading ? '—' : fmtMXN(totalIngresos), color: G,  icon: '$' },
+          { label: 'Prob. promedio',        value: loading ? '—' : `${probPromedio}%`,    color: PU, icon: '◈' },
+        ].map(k => (
+          <div key={k.label} style={{
+            background: SF, borderRadius: 12, border: `1px solid ${GB}`,
+            boxShadow: SH, padding: '16px 20px', borderLeft: `3px solid ${k.color}`,
+          }}>
+            <div style={{ fontSize: 9, color: DM, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 6 }}>
+              {k.icon} {k.label}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: k.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {k.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Controles */}
+      <SectionCard style={{ padding: '10px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {(['activas', 'todas', 'cerradas'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            padding: '4px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            border: `1.5px solid ${filtro === f ? BL : GB}`,
+            background: filtro === f ? `${BL}15` : 'transparent',
+            color: filtro === f ? BL : DM,
+            textTransform: 'capitalize',
+          }}>{f}</button>
+        ))}
+        <div style={{ flexGrow: 1 }} />
+        <input
+          value={busq} onChange={e => setBusq(e.target.value)}
+          placeholder="Buscar cliente / nombre..."
+          style={{
+            padding: '5px 12px', fontSize: 12, border: `1px solid ${GB}`,
+            borderRadius: 8, outline: 'none', color: TX, minWidth: 180,
+          }}
+        />
+        <button onClick={load} style={{ background: 'none', border: 'none', color: G, cursor: 'pointer', fontSize: 15, fontWeight: 700 }}>↻</button>
+      </SectionCard>
+
+      {/* Lista */}
+      <SectionCard accent={BL}>
+        <SectionHeader icon="💼" title="Pipeline CRM — Odoo wispi19" badge={visible.length} badgeColor={BL} />
+        {loading ? (
+          <div style={{ padding: '40px 18px', textAlign: 'center', color: DM, fontSize: 12 }}>
+            Cargando oportunidades desde Odoo…
+          </div>
+        ) : error ? (
+          <div style={{ padding: '32px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: RD, marginBottom: 8 }}>⚠ {error}</div>
+            <button onClick={load} style={{ padding: '6px 16px', borderRadius: 8, background: G, color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+              Reintentar
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div style={{ padding: '40px 18px', textAlign: 'center', color: DM, fontSize: 12 }}>
+            Sin oportunidades con los filtros actuales
+          </div>
+        ) : (
+          visible.map((o, i) => {
+            const eColor = etapaColor(o.etapa);
+            const today  = new Date().toISOString().slice(0, 10);
+            const isLate = o.fecha_cierre && o.fecha_cierre < today && !o.cerrado;
+            const isHigh = o.prioridad === '1' || o.prioridad === '2';
+            return (
+              <div key={o.id} style={{
+                padding: '14px 20px',
+                borderBottom: i < visible.length - 1 ? `1px solid ${GB}` : 'none',
+                borderLeft: `3px solid ${isLate ? RD : eColor}`,
+                background: isLate ? `${RD}03` : 'transparent',
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: 9, padding: '2px 8px', borderRadius: 100, fontWeight: 700,
+                      background: `${eColor}15`, color: eColor, border: `1px solid ${eColor}30`,
+                      textTransform: 'uppercase', letterSpacing: 0.5,
+                    }}>{o.etapa.replace('> ', '')}</span>
+                    {isHigh && <StatusChip label="PRIORITARIA" color={AM} />}
+                    {isLate  && <StatusChip label="VENCIDA"    color={RD} />}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: TX, marginBottom: 5, lineHeight: 1.4 }}>
+                    {o.nombre}
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {o.cliente && (
+                      <span style={{ fontSize: 11, color: DM, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        🏢 {o.cliente}
+                      </span>
+                    )}
+                    {o.propietario && (
+                      <span style={{ fontSize: 11, color: DM, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        👤 {o.propietario}
+                      </span>
+                    )}
+                    {o.equipo && (
+                      <span style={{ fontSize: 11, color: DM, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        👥 {o.equipo}
+                      </span>
+                    )}
+                  </div>
+                  <ProbBar pct={o.probabilidad} color={eColor} />
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: G, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtMXN(o.ingresos)}
+                  </div>
+                  {o.fecha_cierre && (
+                    <div style={{ fontSize: 10, color: isLate ? RD : DM, fontWeight: isLate ? 700 : 400 }}>
+                      {isLate ? '⚠ ' : ''}Cierre: {fmtFecha(o.fecha_cierre)}
+                    </div>
+                  )}
+                  <a
+                    href={`https://odoo.wispi.mx/odoo/crm/${o.id}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontSize: 10, color: BL, textDecoration: 'none', fontWeight: 700 }}
+                  >Ver en Odoo ↗</a>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 // ── BlackstoneOSSection — componente principal ────────────────────────────────
 
 export default function BlackstoneOSSection({ theme: _theme }: { theme: ThemeConfig }) {
   const extraTabs: ExtraTab[] = [
-    { id: 'lancemex',     icon: '🔌', label: 'Lancermex',     content: <LancermexTracker /> },
-    { id: 'amistad',      icon: '🏭', label: 'Amistad',      content: <AmistadPipeline /> },
-    { id: 'campo',        icon: '🔧', label: 'Guillermo',    content: <CampoPDN /> },
-    { id: 'kpis',         icon: '📊', label: 'KPIs PDN',    content: <KPIsPDN /> },
-    { id: 'levantamiento',icon: '📍', label: 'Levantamientos', content: <LevantamientoTab /> },
-    { id: 'memoria',      icon: '🧠', label: 'Memoria FO',   content: <MemoriaTecnica /> },
+    { id: 'lancemex',      icon: '🔌', label: 'Lancermex',      content: <LancermexTracker /> },
+    { id: 'amistad',       icon: '🏭', label: 'Amistad',        content: <AmistadPipeline /> },
+    { id: 'campo',         icon: '🔧', label: 'Guillermo',      content: <CampoPDN /> },
+    { id: 'kpis',          icon: '📊', label: 'KPIs PDN',       content: <KPIsPDN /> },
+    { id: 'levantamiento', icon: '📍', label: 'Levantamientos', content: <LevantamientoTab /> },
+    { id: 'memoria',       icon: '🧠', label: 'Memoria FO',     content: <MemoriaTecnica /> },
+    { id: 'oportunidades', icon: '💼', label: 'Oportunidades',  content: <OportunidadesTab /> },
   ];
 
   return (

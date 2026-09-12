@@ -147,7 +147,7 @@ export default function ProyectosDashboardSection() {
 
   if (error) return (
     <div className="p-6 text-red-400 bg-[#1a0a0a] rounded-xl border border-red-800">
-      Error cargando ClickUp: {error}
+      No se pudo conectar con ClickUp: {error}
     </div>
   );
 

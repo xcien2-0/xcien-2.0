@@ -65,7 +65,7 @@ function NewUserModal({
       if (res.ok) { onCreated(); onClose(); }
       else {
         const e = await res.json().catch(() => ({}));
-        setError(e.detail ?? 'Error al crear usuario');
+        setError(e.detail ?? 'No se pudo crear el usuario. Intenta de nuevo.');
       }
     } catch { setError('Error de conexión'); }
     setSaving(false);

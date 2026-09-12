@@ -185,7 +185,7 @@ export default function TokensSection({ theme, activeThemeId }: { theme: ThemeCo
         setFormData({ tipo: 'alta', nombre: '', detalle: '', empresa: 'empresa_a' });
         loadTokens();
       }
-    } catch (e) { showErr("✗ Error al generar token"); }
+    } catch (e) { showErr("✗ No se pudo generar el token. Intenta de nuevo."); }
   };
 
   const filtrados = tokens.filter(t => {

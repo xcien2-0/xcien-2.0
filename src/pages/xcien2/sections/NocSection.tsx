@@ -1024,7 +1024,7 @@ function NocLayersPanel({ cities, onSelectCity, onRefresh }: {
       } else {
         // Rollback — proxy respondió con error o HTTP no-ok
         setBoards(prev => ({ ...prev, [id]: { ...prev[id], enabled: !newEnabled } }));
-        setProxyError(data.detail || data.error || 'Error al cambiar estado');
+        setProxyError(data.detail || data.error || 'No se pudo cambiar el estado. Intenta de nuevo.');
       }
     } catch {
       setBoards(prev => ({ ...prev, [id]: { ...prev[id], enabled: !newEnabled } }));
@@ -1538,7 +1538,7 @@ function RadiobasePanel({ rb, onClose }: { rb: RadiobaseHarmonized; onClose: () 
                 {noc.hostname && <div style={{ fontSize: 9, color: DIM, fontFamily: 'monospace', marginTop: 4 }}>{noc.hostname}</div>}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', color: DIM, fontSize: 11, padding: '14px 0' }}>Sin datos NOCBoard</div>
+              <div style={{ textAlign: 'center', color: DIM, fontSize: 11, padding: '14px 0' }}>Sin alertas registradas en NOCBoard</div>
             )}
             {rb.soporte.total === 0 && rb.campo.total === 0 && (
               <div style={{ textAlign: 'center', color: G, fontSize: 11, padding: '8px 0' }}>✓ Sin tickets ni tareas activas</div>

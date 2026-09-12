@@ -531,7 +531,7 @@ function StockPanel({ theme }: { theme: ThemeConfig }) {
         </select>
       </div>
 
-      {loading && <div style={{ color: theme.dim, fontSize: 12, textAlign: 'center', padding: 20 }}>Cargando...</div>}
+      {loading && <div style={{ color: theme.dim, fontSize: 12, textAlign: 'center', padding: 20 }}>Cargando transferencias…</div>}
 
       {!loading && stock && (
         <>

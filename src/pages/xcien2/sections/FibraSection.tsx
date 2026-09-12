@@ -862,7 +862,7 @@ export default function FibraSection({ theme }: Props) {
         .then(h => h && setData(prev => prev ? { ...prev, historial: h.historial } : prev))
         .catch(() => {});
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : 'Error al guardar');
+      setSaveError(e instanceof Error ? e.message : 'No se pudieron guardar los cambios');
     } finally {
       setSaving(prev => { const n = new Set(prev); n.delete(compId); return n; });
       setEditKey(null);
@@ -902,7 +902,7 @@ export default function FibraSection({ theme }: Props) {
         .then(h => h && setData(prev => prev ? { ...prev, historial: h.historial } : prev))
         .catch(() => {});
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : 'Error al guardar');
+      setSaveError(e instanceof Error ? e.message : 'No se pudieron guardar los cambios');
     } finally {
       setSaving(prev => { const n = new Set(prev); n.delete(key); return n; });
       setEditKey(null);

@@ -19,7 +19,7 @@ function Spinner() {
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ width: 28, height: 28, border: '2px solid #00c46a30', borderTopColor: '#00c46a', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 8px' }} />
-        <span style={{ fontSize: 12 }}>Cargando…</span>
+        <span style={{ fontSize: 12 }}>Conectando con el Call Center…</span>
       </div>
     </div>
   );

@@ -865,7 +865,7 @@ function KPIsPanel({ theme, order }: KPIsPanelProps) {
                 if (!d || d.n === 0) return (
                   <div key={key} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color }} /><span style={{ fontSize: 12 }}>{meta.label}</span></div>
-                    <span style={{ fontSize: 11, color: theme.dim }}>Sin datos</span>
+                    <span style={{ fontSize: 11, color: theme.dim }}>Sin información registrada</span>
                   </div>
                 );
                 const pct_sla = d.pct_dentro_sla ?? 0;
@@ -933,7 +933,7 @@ function KPIsPanel({ theme, order }: KPIsPanelProps) {
       {vista === 'orden' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!order && <div style={{ color: theme.dim, fontSize: 12 }}>Selecciona una orden en la lista.</div>}
-          {order && !ordenKpi && <div style={{ color: theme.dim, fontSize: 12 }}>Sin datos de KPIs para esta orden.</div>}
+          {order && !ordenKpi && <div style={{ color: theme.dim, fontSize: 12 }}>No hay KPIs registrados para esta orden.</div>}
           {order && ordenKpi && (
             <>
               <div style={{ fontSize: 12, color: theme.dim, marginBottom: 4 }}>{order.cliente} · {order.id}</div>
@@ -1962,7 +1962,7 @@ function EvidenciasPanel({ theme, order, onRefresh }: EvidenciasPanelProps) {
         body: JSON.stringify({ order_id: order.id, notas, usuario: 'Técnico' })
       });
       if (res.ok) { await loadEvidencias(); onRefresh(); }
-      else { const err = await res.json(); showErr(err.detail ?? 'Error al cerrar'); }
+      else { const err = await res.json(); showErr(err.detail ?? 'No se pudo cerrar la tarea. Intenta de nuevo.'); }
     } finally { setClosing(false); }
   };
 

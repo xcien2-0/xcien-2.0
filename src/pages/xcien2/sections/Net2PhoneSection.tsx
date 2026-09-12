@@ -219,7 +219,7 @@ export default function Net2PhoneSection() {
         ))}
       </div>
 
-      {loading && <div style={{ color:'#4b5563', fontSize:12, marginBottom:12 }}>Cargando...</div>}
+      {loading && <div style={{ color:'#4b5563', fontSize:12, marginBottom:12 }}>Cargando extensiones…</div>}
 
       {/* ── EN VIVO ─────────────────────────────────────────────────────── */}
       {tab === 'live' && (

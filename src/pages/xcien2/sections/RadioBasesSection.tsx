@@ -268,7 +268,7 @@ export default function RadioBasesSection({ theme }: Props) {
         .then(h => h && setData(prev => prev ? { ...prev, historial: h.historial } : prev))
         .catch(() => {});
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : 'Error al guardar');
+      setSaveError(e instanceof Error ? e.message : 'No se pudieron guardar los cambios');
     } finally {
       setSaving(false);
       setEditKey(null);

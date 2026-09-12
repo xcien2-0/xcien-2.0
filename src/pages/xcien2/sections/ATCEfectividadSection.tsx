@@ -88,7 +88,7 @@ export default function ATCEfectividadSection({ theme: _theme }: { theme: ThemeC
       const json = await r.json();
       setData(json && typeof json === 'object' && !Array.isArray(json) ? json as Data : null);
     } catch (e: any) {
-      setError(e.message ?? 'Error al cargar datos');
+      setError(e.message ?? 'No se pudieron cargar los datos de efectividad');
     } finally {
       setLoading(false);
     }

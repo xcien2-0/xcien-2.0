@@ -322,7 +322,7 @@ export default function RRHHSection({ theme }: Props) {
         setEmpleados(empData);
         setStats(statsData);
       } catch (e: any) {
-        setError(e.message || 'Error cargando datos');
+        setError(e.message || 'No se pudo cargar el directorio de personas');
       } finally {
         setLoading(false);
       }

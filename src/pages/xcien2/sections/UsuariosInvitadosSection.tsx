@@ -65,7 +65,7 @@ export default function UsuariosInvitadosSection({ theme: _theme }: { theme: The
       const data: Usuario[] = await r.json();
       setUsuarios(data);
     } catch (e: any) {
-      setError(e.message ?? 'Error al cargar usuarios');
+      setError(e.message ?? 'No se pudo cargar la lista de usuarios');
     } finally {
       setLoading(false);
     }

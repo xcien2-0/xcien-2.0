@@ -137,7 +137,7 @@ function TareaDrawer({
         }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {loading
-              ? <div style={{ color: theme.dim, fontSize: 13 }}>Cargando...</div>
+              ? <div style={{ color: theme.dim, fontSize: 13 }}>Cargando bidrillas en campo…</div>
               : <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>
                   {detalle?.nombre}
                 </div>

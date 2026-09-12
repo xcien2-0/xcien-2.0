@@ -170,7 +170,7 @@ export default function VentasEfectividadSection() {
       {/* Tabla */}
       <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#4b5563' }}>Cargando...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#4b5563' }}>Cargando datos de efectividad…</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -239,7 +239,7 @@ export default function VentasEfectividadSection() {
               })}
               {rows.length === 0 && (
                 <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#4b5563' }}>
-                  Sin datos para este filtro.
+                  Sin registros para los filtros seleccionados.
                 </td></tr>
               )}
             </tbody>

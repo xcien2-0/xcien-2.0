@@ -35,7 +35,7 @@ export default function TelegramBotSection({ theme }: { theme: ThemeConfig }) {
         setStatus({ type: 'success', msg: 'Configuración guardada correctamente' });
       }
     } catch (e) {
-      setStatus({ type: 'error', msg: 'Error al guardar la configuración' });
+      setStatus({ type: 'error', msg: 'No se pudo guardar la configuración del bot' });
     }
     setLoading(false);
   };

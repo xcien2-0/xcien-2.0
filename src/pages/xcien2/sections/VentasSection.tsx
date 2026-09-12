@@ -341,7 +341,7 @@ export default function VentasSection({ theme: T }: Props) {
   );
 
   if (!resumen || !resFiltrado) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: R }}>Error cargando datos</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: R }}>No se pudieron cargar los datos de ventas</div>
   );
 
   // Derived data
