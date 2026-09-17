@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import { ThemeConfig } from '../types';
+import 'leaflet/dist/leaflet.css';
+import * as L from 'leaflet';
 
 interface Muni {
   municipio: string; estado: string; total: number;
@@ -23,6 +25,112 @@ function medColor(d: number): string {
   if (d > 90) return '#e84545';
   if (d > 30) return '#f0a050';
   return '#00c4b3';
+}
+
+function bubbleSVG(total: number, fallas: number, hab: number, mediana: number): string {
+  const r = Math.max(Math.sqrt(total) * 7, 14);
+  const mc = medColor(mediana);
+  const cx = r + 5, cy = r + 5;
+  const ro = r * 0.92, ri = r * 0.38;
+  const size = (r + 5) * 2 + 2;
+
+  let pie = '';
+  if (fallas === 0) {
+    pie = `<circle cx="${cx}" cy="${cy}" r="${ro}" fill="#f0a050" stroke="none"/>`;
+  } else if (hab === 0) {
+    pie = `<circle cx="${cx}" cy="${cy}" r="${ro}" fill="#00c4b3" stroke="none"/>`;
+  } else {
+    const fPct = fallas / total;
+    const ang = fPct * 2 * Math.PI;
+    const x1 = cx + ro * Math.cos(-Math.PI / 2);
+    const y1 = cy + ro * Math.sin(-Math.PI / 2);
+    const x2 = cx + ro * Math.cos(-Math.PI / 2 + ang);
+    const y2 = cy + ro * Math.sin(-Math.PI / 2 + ang);
+    const lg = ang > Math.PI ? 1 : 0;
+    pie = `
+      <path d="M${cx},${cy} L${x1},${y1} A${ro},${ro} 0 ${lg},1 ${x2},${y2} Z" fill="#00c4b3"/>
+      <path d="M${cx},${cy} L${x2},${y2} A${ro},${ro} 0 ${1 - lg},1 ${x1},${y1} Z" fill="#f0a050"/>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+    <circle cx="${cx}" cy="${cy}" r="${r + 4}" fill="none" stroke="${mc}" stroke-width="1.5" opacity="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0d1422" stroke="${mc}" stroke-width="0.8"/>
+    ${pie}
+    <circle cx="${cx}" cy="${cy}" r="${ri}" fill="#0d1422"/>
+    <text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="${Math.max(9, Math.min(13, Math.floor(r * 0.6)))}"
+      font-family="system-ui,sans-serif" font-weight="700" fill="#e2e8f0">${total}</text>
+  </svg>`;
+}
+
+function BacklogMap({ munis }: { munis: Muni[] }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!leafletRef.current) {
+      leafletRef.current = L.map(mapRef.current, {
+        center: [25.68, -100.31], zoom: 9,
+        zoomControl: true, attributionControl: false,
+      });
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 17 }
+      ).addTo(leafletRef.current);
+      L.tileLayer(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 17, opacity: 0.7 }
+      ).addTo(leafletRef.current);
+    }
+
+    // Limpiar marcadores anteriores
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    const map = leafletRef.current;
+    const withCoords = munis.filter(m => m.lat && m.lon);
+
+    withCoords.forEach(m => {
+      const svg = bubbleSVG(m.total, m.fallas, m.hab, m.mediana);
+      const r   = Math.max(Math.sqrt(m.total) * 7, 14);
+      const sz  = (r + 5) * 2 + 2;
+      const icon = L.divIcon({
+        html: svg, className: '', iconSize: [sz, sz],
+        iconAnchor: [sz / 2, sz / 2],
+      });
+      const marker = L.marker([m.lat!, m.lon!], { icon })
+        .bindPopup(`
+          <b>${m.municipio}</b> · ${m.estado}<br/>
+          <span style="color:#00c4b3">●</span> ${m.fallas} fallas &nbsp;
+          <span style="color:#f0a050">●</span> ${m.hab} hab<br/>
+          Mediana: <b style="color:${medColor(m.mediana)}">${m.mediana}d</b>
+        `, { className: 'backlog-popup' })
+        .addTo(map);
+      markersRef.current.push(marker);
+    });
+
+    if (withCoords.length > 0) {
+      const bounds = L.latLngBounds(withCoords.map(m => [m.lat!, m.lon!]));
+      map.fitBounds(bounds.pad(0.25));
+    }
+  }, [munis]);
+
+  useEffect(() => () => { leafletRef.current?.remove(); leafletRef.current = null; }, []);
+
+  return (
+    <>
+      <style>{`
+        .backlog-popup .leaflet-popup-content-wrapper {
+          background: #0d1422; color: #e2e8f0; border: 1px solid #1e2d3d;
+          border-radius: 8px; font-size: 12px;
+        }
+        .backlog-popup .leaflet-popup-tip { background: #0d1422; }
+      `}</style>
+      <div ref={mapRef} style={{ width: '100%', height: 380, borderRadius: 10,
+        border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }} />
+    </>
+  );
 }
 
 function KPI({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
@@ -157,6 +265,9 @@ export default function BacklogSection({ theme }: Props) {
         <KPI label="mediana de días" value={`${data.mediana_dias}d`} color={medColor(data.mediana_dias)}
           sub={data.mediana_dias > 90 ? 'crítico' : data.mediana_dias > 30 ? 'atención' : 'ok'} />
       </div>
+
+      {/* Mapa */}
+      <BacklogMap munis={data.municipios} />
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${T.border}`, paddingBottom: 0 }}>
