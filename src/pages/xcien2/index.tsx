@@ -33,8 +33,9 @@ import PresenceAvatars from '../../components/PresenceAvatars';
 // ── Secciones lazy — se cargan solo cuando el usuario las abre ────────────────
 const HexoField3D        = lazy(() => import('../../components/HexoField3D'));
 const InicioHoloSection  = lazy(() => import('./sections/InicioHoloSection'));
-const NocSection         = lazy(() => import('./sections/NocSection'));
-const CastSection        = lazy(() => import('./sections/CastSection'));
+const NocSection              = lazy(() => import('./sections/NocSection'));
+const CastSection             = lazy(() => import('./sections/CastSection'));
+const MesaOperacionesSection  = lazy(() => import('./sections/MesaOperacionesSection'));
 const InfraEnergiaSection = lazy(() => import('./sections/InfraEnergiaSection'));
 const ProyectosSection    = lazy(() => import('./sections/ProyectosSection'));
 const RedSection         = lazy(() => import('./sections/RedSection'));
@@ -107,7 +108,7 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
   // ══ NIVEL DIRECCIÓN ══════════════════════════════════════════════════════
   admin:    '*',
 
-  director: ['inicio','impacto','noc','cast','red','infra-energia','incidentes',
+  director: ['inicio','impacto','noc','cast','mesa-ops','red','infra-energia','incidentes',
               'ventas','integridad','reportes-kpi','auditoria-odoo','auditorias-plazas',
               'rrhh','sala_juntas','proyectos','plan2026','fibra','radiobases',
               'estrategia2030','agentes','comite','docs','reportlab','analytics',
@@ -115,13 +116,13 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
               'usuarios-invitados','atc-efectividad'],
 
   // ══ PAC ÁREA 1 — OPERACIONES ════════════════════════════════════════════
-  operaciones: ['inicio','wfm','bidrillas','scan','inv-transfers',
+  operaciones: ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops',
                 'docs','sala_juntas','radiobases','blackstone','cast','auditorias-plazas'],
-  wfm:         ['inicio','wfm','bidrillas','scan','inv-transfers',  // alias legacy
+  wfm:         ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops',
                 'docs','sala_juntas','radiobases','blackstone','cast'],
 
   // ══ PAC ÁREA 2 — NOC ════════════════════════════════════════════════════
-  noc:        ['inicio','noc','cast','infra-energia','incidentes',
+  noc:        ['inicio','noc','cast','mesa-ops','infra-energia','incidentes',
                'telegram','wfm','bidrillas','helpdesk','docs','radiobases',
                'blackstone','fibra_xcien'],
   'noc-viewer': ['inicio','noc','cast','infra-energia'],           // solo lectura NOC
@@ -149,7 +150,7 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
   finanzas: ['inicio','docs','sala_juntas','rrhh'],
 
   // ══ PAC ÁREA 9 — ATENCIÓN A CLIENTES ════════════════════════════════════
-  atc:  ['inicio','cast','helpdesk'],
+  atc:  ['inicio','cast','mesa-ops','helpdesk'],
 
   // ══ PAC ÁREA 10-13 — COMERCIAL (XCIEN / HUUS / LUMINET / GOBIERNO) ══════
   comercial:          ['inicio','sala_juntas','proyectos','docs','iblack'],
@@ -195,6 +196,7 @@ const NAV: NavEntry[] = [
   // ── Monitoreo ──────────────────────────────────────────────────────────────
   { id: 'noc',           label: 'NOC Virtual',             icon: '📡', group: 'Monitoreo' },
   { id: 'cast',          label: 'ATC NOC',                 icon: '🎫', group: 'Monitoreo' },
+  { id: 'mesa-ops',      label: 'Mesa de Operaciones',     icon: '🗂️', group: 'Monitoreo' },
   { id: 'helpdesk',      label: 'Mesa de Ayuda',           icon: '📈', group: 'Monitoreo' },
   { id: 'infra-energia', label: 'Infraestructura Energía', icon: '⚡', group: 'Monitoreo' },
   { id: 'red',           label: 'Mapa de Red',             icon: '🗺️', group: 'Monitoreo' },
@@ -781,6 +783,7 @@ function Content({
         />
       )}
       {section === 'cast'         && <CastSection />}
+      {section === 'mesa-ops'     && <MesaOperacionesSection />}
       {section === 'infra-energia' && <InfraEnergiaSection theme={theme} />}
       {section === 'red'      && <RedSection      theme={theme} />}
       {section === 'sync'     && <SyncSection />}

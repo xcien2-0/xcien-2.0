@@ -6,6 +6,7 @@ Endpoints:
   GET /api/helpdesk/resumen        — KPIs generales
   GET /api/helpdesk/etapas         — etapas por equipo
   GET /api/helpdesk/analytics      — tendencias + patrones por periodo
+  GET /api/helpdesk/backlog        — backlog operativo tiempo real por etapa/agente/antiguedad
 """
 import os, xmlrpc.client
 from collections import defaultdict
@@ -264,3 +265,197 @@ def get_analytics(
         "por_agente": top(por_agente, 15),
         "por_prioridad": top(por_prio),
     }
+
+
+# ── Caché TTL para backlog (evita 40-50s por request) ─────────────────────────
+_backlog_cache: dict = {}
+_BACKLOG_TTL = 180  # segundos
+
+def _cache_get(key: str):
+    entry = _backlog_cache.get(key)
+    if entry and (datetime.utcnow() - entry["ts"]).total_seconds() < _BACKLOG_TTL:
+        return entry["data"]
+    return None
+
+def _cache_set(key: str, data):
+    _backlog_cache[key] = {"ts": datetime.utcnow(), "data": data}
+
+
+@router.get("/backlog")
+def get_backlog(limit: int = Query(500, le=1000)):
+    """Backlog operativo en tiempo real: tickets abiertos por etapa, por agente y los más antiguos."""
+    cached = _cache_get("backlog")
+    if cached:
+        return cached
+
+    models, uid = _get_conn()
+    now = datetime.utcnow()
+
+    CAST_TEAMS = [6, 39, 60, 67, 41, 48, 44, 42, 8]
+
+    # Filtrar etapas cerradas directamente en Odoo (mucho más rápido que client-side)
+    raw = models.execute_kw(
+        ODOO_DB, uid, ODOO_PASS, "helpdesk.ticket", "search_read",
+        [[["team_id", "in", CAST_TEAMS],
+          ["stage_id.name", "not ilike", "cerrado"],
+          ["stage_id.name", "not ilike", "resuelto"],
+          ["stage_id.name", "not ilike", "cancelado"],
+          ["stage_id.name", "not ilike", "solucionado"]]],
+        {"fields": ["id", "name", "stage_id", "user_id", "create_date",
+                    "team_id", "ticket_type_id", "priority"],
+         "limit": limit,
+         "order": "create_date asc"},
+    )
+
+    open_tickets = raw
+
+    stage_counts: dict[str, int] = defaultdict(int)
+    agent_counts: dict[str, int] = defaultdict(int)
+    unassigned = 0
+    oldest: list[dict] = []
+
+    for t in open_tickets:
+        sname = t["stage_id"][1] if t["stage_id"] else "Sin etapa"
+        stage_counts[sname] += 1
+
+        ag = t["user_id"][1] if t["user_id"] else None
+        if ag:
+            agent_counts[ag] += 1
+        else:
+            unassigned += 1
+
+        try:
+            dt = datetime.strptime(t["create_date"][:19], "%Y-%m-%d %H:%M:%S")
+            age_h = round((now - dt).total_seconds() / 3600, 1)
+        except Exception:
+            age_h = 0
+
+        oldest.append({
+            "id":     t["id"],
+            "name":   (t["name"] or "")[:60],
+            "stage":  sname,
+            "agent":  ag or "Sin asignar",
+            "team":   t["team_id"][1] if t["team_id"] else "—",
+            "tipo":   t["ticket_type_id"][1] if t["ticket_type_id"] else "—",
+            "age_h":  age_h,
+            "critico": age_h > 168,
+        })
+
+    oldest.sort(key=lambda x: x["age_h"], reverse=True)
+
+    por_etapa = sorted(
+        [{"etapa": k, "total": v} for k, v in stage_counts.items()],
+        key=lambda x: -x["total"],
+    )
+    por_agente = sorted(
+        [{"agente": k, "total": v} for k, v in agent_counts.items()],
+        key=lambda x: -x["total"],
+    )[:15]
+
+    result = {
+        "total_abiertos": len(open_tickets),
+        "sin_asignar":    unassigned,
+        "criticos":       sum(1 for t in oldest if t["critico"]),
+        "por_etapa":      por_etapa,
+        "por_agente":     por_agente,
+        "tickets_antiguos": oldest[:30],
+        "capturado_at":   now.strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    _cache_set("backlog", result)
+    return result
+
+
+def _normalize_city(city: str) -> str:
+    """Normaliza nombre de municipio: strip + title case."""
+    return city.strip().title() if city else "Sin municipio"
+
+
+@router.get("/backlog-nl")
+def get_backlog_nl():
+    """Backlog de tickets abiertos en Nuevo León, agrupado por municipio + tipo (habilitación/falla)."""
+    cached = _cache_get("backlog_nl")
+    if cached:
+        return cached
+
+    models, uid = _get_conn()
+    now = datetime.utcnow()
+
+    NL_STATE_ID  = 568
+    CAST_TEAMS   = [6, 39, 60, 67, 41, 48, 44, 42, 8]
+    HAB_TYPES    = ["visita técnica", "habilitación", "instalación", "alta"]
+    FALLA_TYPES  = ["falla general", "falla", "alarma", "incidencia", "incidente"]
+
+    # 1. Partners en NL con sus ciudades
+    nl_partners = models.execute_kw(
+        ODOO_DB, uid, ODOO_PASS, "res.partner", "search_read",
+        [[["state_id", "=", NL_STATE_ID]]],
+        {"fields": ["id", "city"], "limit": 50000},
+    )
+    partner_city = {p["id"]: _normalize_city(p.get("city") or "") for p in nl_partners}
+    nl_partner_ids = list(partner_city.keys())
+
+    if not nl_partner_ids:
+        return {"municipios": [], "total_abiertos": 0, "capturado_at": now.strftime("%Y-%m-%d %H:%M UTC")}
+
+    # 2. Tickets abiertos de esos partners en CAST
+    raw = models.execute_kw(
+        ODOO_DB, uid, ODOO_PASS, "helpdesk.ticket", "search_read",
+        [[["team_id", "in", CAST_TEAMS], ["partner_id", "in", nl_partner_ids[:3000]]]],
+        {"fields": ["id", "name", "stage_id", "partner_id", "ticket_type_id",
+                    "create_date", "user_id"],
+         "limit": 2000},
+    )
+
+    open_tickets = [t for t in raw if t.get("stage_id") and not _is_closed_stage(t["stage_id"][1])]
+
+    # 3. Agrupar por municipio + clasificar tipo
+    municipio_data: dict[str, dict] = defaultdict(lambda: {"habilitaciones": 0, "fallas": 0, "otros": 0, "total": 0, "tickets": []})
+
+    for t in open_tickets:
+        pid  = t["partner_id"][0] if t["partner_id"] else None
+        city = partner_city.get(pid, "Sin municipio") if pid else "Sin municipio"
+        tipo_raw = (t["ticket_type_id"][1] if t["ticket_type_id"] else "").lower()
+
+        try:
+            dt    = datetime.strptime(t["create_date"][:19], "%Y-%m-%d %H:%M:%S")
+            age_h = round((now - dt).total_seconds() / 3600, 1)
+        except Exception:
+            age_h = 0
+
+        entry = municipio_data[city]
+        entry["total"] += 1
+
+        if any(k in tipo_raw for k in HAB_TYPES):
+            entry["habilitaciones"] += 1
+            cat = "habilitacion"
+        elif any(k in tipo_raw for k in FALLA_TYPES):
+            entry["fallas"] += 1
+            cat = "falla"
+        else:
+            entry["otros"] += 1
+            cat = "otro"
+
+        if len(entry["tickets"]) < 5:
+            entry["tickets"].append({
+                "id":    t["id"],
+                "name":  (t["name"] or "")[:50],
+                "stage": t["stage_id"][1] if t["stage_id"] else "—",
+                "tipo":  t["ticket_type_id"][1] if t["ticket_type_id"] else "—",
+                "age_h": age_h,
+                "cat":   cat,
+            })
+
+    municipios = sorted(
+        [{"municipio": k, **v, "tickets": v["tickets"]} for k, v in municipio_data.items()],
+        key=lambda x: -x["total"],
+    )
+
+    result_nl = {
+        "estado":        "Nuevo León",
+        "state_id":      NL_STATE_ID,
+        "total_abiertos": len(open_tickets),
+        "municipios":    municipios,
+        "capturado_at":  now.strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    _cache_set("backlog_nl", result_nl)
+    return result_nl
