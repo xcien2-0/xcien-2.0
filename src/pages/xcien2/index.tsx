@@ -85,6 +85,7 @@ const FibraXCIENSection       = lazy(() => import('./sections/FibraXCIENSection'
 const UsuariosAdminSection      = lazy(() => import('./sections/UsuariosAdminSection'));
 const UsuariosInvitadosSection  = lazy(() => import('./sections/UsuariosInvitadosSection'));
 const ATCEfectividadSection     = lazy(() => import('./sections/ATCEfectividadSection'));
+const BacklogSection            = lazy(() => import('./sections/BacklogSection'));
 const CallCenter         = lazy(() => import('../CallCenter'));
 const Gerencia           = lazy(() => import('../Gerencia'));
 const ReportesGobierno   = lazy(() => import('../ReportesGobierno'));
@@ -116,9 +117,9 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
               'usuarios-invitados','atc-efectividad'],
 
   // ══ PAC ÁREA 1 — OPERACIONES ════════════════════════════════════════════
-  operaciones: ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops',
+  operaciones: ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops','backlog',
                 'docs','sala_juntas','radiobases','blackstone','cast','auditorias-plazas'],
-  wfm:         ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops',
+  wfm:         ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops','backlog',
                 'docs','sala_juntas','radiobases','blackstone','cast'],
 
   // ══ PAC ÁREA 2 — NOC ════════════════════════════════════════════════════
@@ -215,6 +216,7 @@ const NAV: NavEntry[] = [
   { id: 'call',          label: 'Call Center',          icon: '📞', group: 'Campo & Inventario' },
   { id: 'scan',          label: 'Inventario & Scanner', icon: '🔍', group: 'Campo & Inventario' },
   { id: 'inv-transfers', label: 'Transferencias',       icon: '🏷️', group: 'Campo & Inventario' },
+  { id: 'backlog',           label: 'Backlog Operativo',  icon: '📋', group: 'Campo & Inventario' },
   { id: 'auditoria-odoo',    label: 'Auditoría Odoo',     icon: '🔎', group: 'Campo & Inventario' },
   { id: 'auditorias-plazas', label: 'Auditorías de Plazas', icon: '📋', group: 'Campo & Inventario' },
   { id: 'odoo-docs',         label: 'Guías Odoo',          icon: '📖', group: 'Campo & Inventario' },
@@ -350,6 +352,7 @@ const SECTION_TITLE: Record<SectionId, string> = {
   'ventas-efectividad': 'Efectividad Ventas',
   'atc-efectividad': 'Efectividad ATC',
   impacto:           'Reporte de Impacto',
+  backlog:           'Backlog Operativo',
 };
 
 // ── UISP color constants ──────────────────────────────────────────────────────
@@ -818,6 +821,7 @@ function Content({
       {section === 'blackstone'     && <BlackstoneOSSection theme={theme} />}
       {section === 'fibra_xcien'    && <FibraXCIENSection   theme={theme} />}
 
+      {section === 'backlog'            && <BacklogSection          theme={theme} />}
       {section === 'auditoria-odoo'    && <AuditoriaOdooSection   theme={theme} />}
       {section === 'auditorias-plazas' && <AuditoriasPlazasSection theme={theme} />}
       {section === 'odoo-docs'      && <OdooDocsSection theme={theme} />}

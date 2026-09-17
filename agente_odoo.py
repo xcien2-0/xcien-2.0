@@ -7,7 +7,7 @@ import os, time, xmlrpc.client, json, signal, logging, urllib.request, urllib.pa
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-load_dotenv(os.path.expanduser("~/Proyectos/xcien-portal/backend/.env"))
+load_dotenv(os.path.expanduser("~/Proyectos/xcien/xcien-portal/backend/.env"))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("agente_odoo")
 

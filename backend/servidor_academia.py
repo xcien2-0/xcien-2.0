@@ -13144,6 +13144,67 @@ async def get_blackstone_fo_tickets(_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Error Odoo FO: {str(e)[:200]}")
 
 
+# ─── Blackstone — CRM Oportunidades ───────────────────────────────────────────
+
+@app.get("/api/blackstone/oportunidades")
+async def get_blackstone_oportunidades(_user: dict = Depends(get_current_user)):
+    """Oportunidades CRM de Odoo wispi19 — equipo Canales Indirectos UP."""
+    import asyncio as _aio, xmlrpc.client as _xrc
+
+    CLOSED_KW = {"ganado", "perdido", "cancelado", "won", "lost", "cerrado"}
+
+    def _fetch():
+        HOST = os.getenv("ODOO_URL", "https://odoo.wispi.mx").rstrip("/")
+        DB   = os.getenv("ODOO_DB", "wispi19")
+        U    = os.getenv("ODOO_USER", "")
+        P    = os.getenv("ODOO_PASSWORD", "")
+
+        common = _xrc.ServerProxy(f"{HOST}/xmlrpc/2/common", allow_none=True)
+        uid_o  = common.authenticate(DB, U, P, {})
+        models = _xrc.ServerProxy(f"{HOST}/xmlrpc/2/object", allow_none=True)
+
+        PDN_KW       = ["piedras", "pdn", "acuña", "acuna", "sandur", "lancermex", "amistad"]
+        ALEJANDRO_ID = 938  # alejandro.guzman@xcien.com
+
+        raw = models.execute_kw(DB, uid_o, P, "crm.lead", "search_read",
+            [[["active", "=", True], ["type", "=", "opportunity"],
+              ["user_id", "=", ALEJANDRO_ID]]],
+            {"fields": ["id", "name", "stage_id", "probability",
+                        "expected_revenue", "partner_id", "user_id", "team_id",
+                        "date_deadline", "create_date", "date_closed",
+                        "priority", "description"],
+             "limit": 500, "order": "id desc"})
+
+        raw = [o for o in raw if any(kw in (o.get("name") or "").lower() for kw in PDN_KW)]
+
+        opps = []
+        for o in raw:
+            stage   = o["stage_id"][1] if o.get("stage_id") else ""
+            closed  = any(kw in stage.lower() for kw in CLOSED_KW)
+            opps.append({
+                "id":              o["id"],
+                "nombre":          o["name"],
+                "etapa":           stage,
+                "cerrado":         closed,
+                "probabilidad":    round(o.get("probability") or 0, 1),
+                "ingresos":        o.get("expected_revenue") or 0,
+                "cliente":         o["partner_id"][1] if o.get("partner_id") else "",
+                "propietario":     o["user_id"][1] if o.get("user_id") else "",
+                "equipo":          o["team_id"][1] if o.get("team_id") else "",
+                "fecha_cierre":    (o.get("date_deadline") or "")[:10],
+                "fecha_creacion":  (o.get("create_date") or "")[:10],
+                "prioridad":       o.get("priority", "0"),
+            })
+
+        return {"oportunidades": opps, "total": len(opps)}
+
+    try:
+        result = await _aio.get_event_loop().run_in_executor(None, _fetch)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error Odoo CRM: {str(e)[:200]}")
+
+
 # ─── Fibra Óptica XCIEN — Memoria Técnica ─────────────────────────────────────
 
 FIBRA_MEMORIA_PATH = os.path.join(BASE_DIR, "data", "blackstone_memoria.json")
@@ -13424,6 +13485,174 @@ def get_atc_efectividad(dias: int = 30):
         },
         "agentes": agentes_list,
     }
+
+
+# ─── Backlog Operativo ────────────────────────────────────────────────────────
+import time as _time_mod
+
+_BACKLOG_CACHE: dict = {"ts": 0, "data": None}
+_BACKLOG_TTL = 86400  # 24 horas
+
+BACKLOG_TEAM_IDS  = [6, 39, 60, 67, 41, 48, 44, 42, 8]
+BACKLOG_FALLA_IDS = [39, 41, 43, 44, 52, 53, 54, 55, 59]
+BACKLOG_HAB_IDS   = [42, 45, 47, 60]
+BACKLOG_OPS_IDS   = BACKLOG_FALLA_IDS + BACKLOG_HAB_IDS
+BACKLOG_CLOSED_KW = {"cerrado", "resuelto", "solucionado", "cancelado", "done", "closed", "solved"}
+
+MUNI_COORDS = {
+    "Monterrey":      (25.6866, -100.3161),
+    "Apodaca":        (25.7803, -100.1851),
+    "San Nicolás de los Garza": (25.7457, -100.2854),
+    "San Pedro Garza García":   (25.6535, -100.4021),
+    "Santa Catarina": (25.6733, -100.4597),
+    "Guadalupe":      (25.6750, -100.2408),
+    "Pesquería":      (25.7924,  -99.9856),
+    "Ciénega de Flores": (25.9534, -100.1767),
+    "García":         (25.8092, -100.5912),
+    "General Escobedo": (25.7943, -100.3296),
+    "Saltillo":       (25.4232, -100.9935),
+    "Torreón":        (25.5428, -103.4068),
+    "Monclova":       (26.9046, -101.4218),
+    "Piedras Negras": (28.7006,  -100.5234),
+    "Acuña":          (29.3225,  -100.9293),
+}
+
+def _shorten_state(s: str) -> str:
+    return {"Nuevo León": "NL", "Coahuila de Zaragoza": "COA",
+            "Coahuila": "COA", "Tamaulipas": "TAMPS"}.get(s, s[:4].upper())
+
+def _build_backlog() -> dict:
+    import xmlrpc.client as _xr
+    from datetime import datetime as _dt
+    from statistics import median as _med
+
+    odoo_url  = os.environ.get("ODOO_URL", "https://odoo.wispi.mx")
+    odoo_db   = os.environ.get("ODOO_DB", "wispi19")
+    odoo_user = os.environ.get("ODOO_USER")
+    odoo_pass = os.environ.get("ODOO_PASSWORD")
+
+    common = _xr.ServerProxy(f"{odoo_url}/xmlrpc/2/common")
+    uid = common.authenticate(odoo_db, odoo_user, odoo_pass, {})
+    m   = _xr.ServerProxy(f"{odoo_url}/xmlrpc/2/object")
+
+    tickets = m.execute_kw(odoo_db, uid, odoo_pass, "helpdesk.ticket", "search_read",
+        [[["team_id", "in", BACKLOG_TEAM_IDS],
+          ["ticket_type_id", "in", BACKLOG_OPS_IDS]]],
+        {"fields": ["id", "ticket_type_id", "create_date", "partner_id",
+                    "user_id", "stage_id", "priority"], "limit": 1000})
+
+    # Filtrar cerrados
+    tickets = [t for t in tickets
+               if not any(kw in (t["stage_id"][1] or "").lower()
+                          for kw in BACKLOG_CLOSED_KW)]
+
+    # Cargar ciudades/estados de partners
+    partner_ids = list({t["partner_id"][0] for t in tickets if t["partner_id"]})
+    if partner_ids:
+        partners = m.execute_kw(odoo_db, uid, odoo_pass, "res.partner", "search_read",
+            [[["id", "in", partner_ids]]],
+            {"fields": ["id", "city", "state_id"], "limit": len(partner_ids) + 10})
+        pmap = {p["id"]: {
+            "city":  (p.get("city") or "").strip() or "Sin ciudad",
+            "state": (p["state_id"][1] if p.get("state_id") else "Sin estado").replace(" (MX)", ""),
+        } for p in partners}
+    else:
+        pmap = {}
+
+    now = _dt.now()
+    def age_days(t):
+        cd = t.get("create_date")
+        if not cd:
+            return 0
+        return (now - _dt.strptime(cd[:19], "%Y-%m-%d %H:%M:%S")).days
+
+    # Acumular por municipio y por técnico
+    from collections import defaultdict
+    muni_data: dict = defaultdict(lambda: {"fallas": 0, "hab": 0, "ages": [], "state": ""})
+    tec_data:  dict = defaultdict(lambda: {"fallas": 0, "hab": 0, "ages": [], "plazas": set()})
+    total_ages = []
+
+    for t in tickets:
+        pid   = t["partner_id"][0] if t["partner_id"] else None
+        loc   = pmap.get(pid, {"city": "Sin ciudad", "state": "Sin estado"})
+        city  = loc["city"]
+        state = loc["state"]
+        tec   = t["user_id"][1] if t["user_id"] else "Sin asignar"
+        tid   = t["ticket_type_id"][0] if t["ticket_type_id"] else 0
+        cat   = "fallas" if tid in BACKLOG_FALLA_IDS else "hab"
+        age   = age_days(t)
+
+        muni_data[city]["fallas" if cat == "fallas" else "hab"] += 1
+        muni_data[city]["ages"].append(age)
+        muni_data[city]["state"] = _shorten_state(state)
+
+        tec_data[tec]["fallas" if cat == "fallas" else "hab"] += 1
+        tec_data[tec]["ages"].append(age)
+        tec_data[tec]["plazas"].add(_shorten_state(state))
+
+        total_ages.append(age)
+
+    def med(lst): return int(_med(sorted(lst))) if lst else 0
+
+    munis = []
+    for city, d in sorted(muni_data.items(), key=lambda x: -(x[1]["fallas"]+x[1]["hab"])):
+        coords = MUNI_COORDS.get(city, (None, None))
+        total  = d["fallas"] + d["hab"]
+        munis.append({
+            "municipio": city,
+            "estado":    d["state"],
+            "total":     total,
+            "fallas":    d["fallas"],
+            "hab":       d["hab"],
+            "mediana":   med(d["ages"]),
+            "lat":       coords[0],
+            "lon":       coords[1],
+        })
+
+    tecnicos = []
+    for tec, d in sorted(tec_data.items(), key=lambda x: -(x[1]["fallas"]+x[1]["hab"])):
+        total = d["fallas"] + d["hab"]
+        parts = tec.split()
+        label = f"{parts[0][0]}. {' '.join(parts[-2:]).title()}" if len(parts) >= 3 and tec != "Sin asignar" else tec
+        tecnicos.append({
+            "tecnico":  label,
+            "total":    total,
+            "fallas":   d["fallas"],
+            "hab":      d["hab"],
+            "mediana":  med(d["ages"]),
+            "plazas":   sorted(d["plazas"]),
+        })
+
+    total_tickets = len(tickets)
+    total_fallas  = sum(1 for t in tickets if (t["ticket_type_id"][0] if t["ticket_type_id"] else 0) in BACKLOG_FALLA_IDS)
+    total_hab     = total_tickets - total_fallas
+
+    return {
+        "total":       total_tickets,
+        "fallas":      total_fallas,
+        "hab":         total_hab,
+        "mediana_dias": med(total_ages),
+        "municipios":  munis,
+        "tecnicos":    tecnicos,
+        "updated_at":  now.isoformat(),
+    }
+
+@app.get("/api/backlog/ops")
+def get_backlog_ops(force: bool = False):
+    """Backlog operativo (fallas + habilitaciones activas) por municipio y técnico.
+    Caché 24 horas. force=true para refrescar."""
+    global _BACKLOG_CACHE
+    now_ts = _time_mod.time()
+    if not force and _BACKLOG_CACHE["data"] and (now_ts - _BACKLOG_CACHE["ts"]) < _BACKLOG_TTL:
+        return {**_BACKLOG_CACHE["data"], "cached": True}
+    try:
+        data = _build_backlog()
+        _BACKLOG_CACHE = {"ts": now_ts, "data": data}
+        return {**data, "cached": False}
+    except Exception as e:
+        if _BACKLOG_CACHE["data"]:
+            return {**_BACKLOG_CACHE["data"], "cached": True, "error": str(e)}
+        raise HTTPException(status_code=502, detail=f"Error cargando backlog: {e}")
 
 
 # ─── SPA Fallback ─────────────────────────────────────────────────────────────
