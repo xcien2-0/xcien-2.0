@@ -340,6 +340,16 @@ const SECTION_TITLE: Record<SectionId, string> = {
   net2phone:     'Net2Phone Call Center',
   'usuarios-admin':     'Gestión de Usuarios',
   'usuarios-invitados': 'Usuarios Invitados',
+  // Módulos previamente sin entrada — redirigían a inicio al hacer click
+  'mesa-ops':        'Mesa de Operaciones',
+  flotilla:          'Flotilla GPS',
+  blackstone:        'Blackstone · PDN',
+  'auditoria-odoo':  'Auditoría Odoo',
+  'auditorias-plazas': 'Auditorías de Plazas',
+  'odoo-docs':       'Guías Odoo',
+  'ventas-efectividad': 'Efectividad Ventas',
+  'atc-efectividad': 'Efectividad ATC',
+  impacto:           'Reporte de Impacto',
 };
 
 // ── UISP color constants ──────────────────────────────────────────────────────
