@@ -125,8 +125,11 @@ TOKEN_SECRET=...             # JWT para tokens internos
 - Secciones FODA y Adopción muestran datos de demo sin advertencia visual
 - Bundle sin code splitting (Leaflet, Three.js cargan siempre)
 
-## Integración BMAD (instalado 2026-06-13)
-Agentes disponibles en Claude Code: `/bmad-pm`, `/bmad-architect`, `/bmad-dev`, `/bmad-qa`, `/bmad-sm`, `/bmad-analyst`, `/bmad-ux-expert`
+## Agentes BMAD (instalado 2026-06-13)
+`/bmad-pm` `/bmad-architect` `/bmad-dev` `/bmad-qa` `/bmad-sm` `/bmad-analyst` `/bmad-ux-expert`
+
+## Port Registry
+Ver `~/Proyectos/PORT_REGISTRY.md` — registro canónico de puertos de todos los proyectos.
 
 ## Remote Trigger
 `trig_01A1VdoN9yfwyoUFWChXbn3g` — Director General xcien-portal
