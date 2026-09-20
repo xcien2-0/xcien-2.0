@@ -51,9 +51,6 @@ const VentasEfectividadSection = lazy(() => import('./sections/VentasEfectividad
 const AgentesSection     = lazy(() => import('./sections/AgentesSection'));
 const InventarioSection  = lazy(() => import('./sections/InventarioSection'));
 const InventarioTransfersSection = lazy(() => import('./sections/InventarioTransfersSection'));
-const XcienTokensSection = lazy(() => import('./sections/XcienTokensSection'));
-const MerkleFeedSection  = lazy(() => import('./sections/MerkleFeedSection'));
-const Estrategia2030Section = lazy(() => import('./sections/Estrategia2030Section'));
 const ProyectosDashboardSection = lazy(() => import('./sections/ProyectosDashboardSection'));
 const SuperAdminSection     = lazy(() => import('./sections/SuperAdminSection'));
 const CerebroSection        = lazy(() => import('./sections/CerebroSection'));
@@ -61,14 +58,12 @@ const AdopcionSection    = lazy(() => import('./sections/AdopcionSection'));
 const TelegramBotSection = lazy(() => import('./sections/TelegramBotSection'));
 const DocsSection        = lazy(() => import('./sections/DocsSection'));
 const BackupSection      = lazy(() => import('./sections/BackupSection'));
-const ReportLabSection   = lazy(() => import('./sections/ReportLabSection'));
 const AuditoriaOdooSection   = lazy(() => import('./sections/AuditoriaOdooSection'));
 const AuditoriasPlazasSection = lazy(() => import('./sections/AuditoriasPlazasSection'));
 const FinanzasSection    = lazy(() => import('./sections/FinanzasSection'));
 const ReportesKPISection      = lazy(() => import('./sections/ReportesKPISection'));
 const IncidentesSection       = lazy(() => import('./sections/IncidentesSection'));
 const ComiteSection           = lazy(() => import('./sections/ComiteSection'));
-const TokenConsumptionSection = lazy(() => import('./sections/TokenConsumptionSection'));
 const ImpactoSection          = lazy(() => import('./sections/ImpactoSection'));
 const IntegridadSection       = lazy(() => import('./sections/IntegridadSection'));
 const AnalyticsSection        = lazy(() => import('./sections/AnalyticsSection'));
@@ -76,7 +71,6 @@ const HelpdeskSection         = lazy(() => import('./sections/HelpdeskSection'))
 const Net2PhoneSection        = lazy(() => import('./sections/Net2PhoneSection'));
 const CallCenterHubSection    = lazy(() => import('./sections/CallCenterHubSection'));
 const FibraSection            = lazy(() => import('./sections/FibraSection'));
-const IBlackSection           = lazy(() => import('./sections/IBlackSection'));
 const RadioBasesSection       = lazy(() => import('./sections/RadioBasesSection'));
 const FlotillaSection         = lazy(() => import('./sections/FlotillaSection'));
 const OdooDocsSection         = lazy(() => import('./sections/OdooDocsSection'));
@@ -112,8 +106,8 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
   director: ['inicio','impacto','noc','cast','mesa-ops','red','infra-energia','incidentes',
               'ventas','integridad','reportes-kpi','auditoria-odoo','auditorias-plazas',
               'rrhh','sala_juntas','proyectos','plan2026','fibra','radiobases',
-              'estrategia2030','agentes','comite','docs','reportlab','analytics',
-              'blackstone','fibra_xcien','iblack','flotilla','wfm','bidrillas',
+              'agentes','comite','docs','analytics',
+              'blackstone','fibra_xcien','flotilla','wfm','bidrillas',
               'usuarios-invitados','atc-efectividad'],
 
   // ══ PAC ÁREA 1 — OPERACIONES ════════════════════════════════════════════
@@ -154,7 +148,7 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
   atc:  ['inicio','cast','mesa-ops','helpdesk'],
 
   // ══ PAC ÁREA 10-13 — COMERCIAL (XCIEN / HUUS / LUMINET / GOBIERNO) ══════
-  comercial:          ['inicio','sala_juntas','proyectos','docs','iblack'],
+  comercial:          ['inicio','sala_juntas','proyectos','docs'],
   'comercial-huus':   ['inicio','sala_juntas','proyectos','docs'],
   'comercial-luminet':['inicio','sala_juntas','proyectos','docs'],
   'comercial-gobierno':['inicio','sala_juntas','proyectos','docs'],
@@ -164,7 +158,7 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
 
   // ══ PAC ÁREA 15 — PRE-VENTA ═════════════════════════════════════════════
   preventa: ['inicio','proyectos','plan2026','fibra','fibra_xcien',
-             'blackstone','docs','sala_juntas','iblack','radiobases'],
+             'blackstone','docs','sala_juntas','radiobases'],
 
   // ══ PAC ÁREA 16 — CADENA DE SUMINISTROS ═════════════════════════════════
   'cadena-suministros': ['inicio','scan','inv-transfers','docs'],
@@ -240,18 +234,14 @@ const NAV: NavEntry[] = [
   { id: 'proyectos', label: 'Tablero de Proyectos', icon: '📊', group: 'Planeación' },
   { id: 'fibra',       label: 'Fibra Óptica X100',    icon: '🔆', group: 'Planeación' },
   { id: 'radiobases', label: 'Radio Bases',          icon: '📡', group: 'Planeación' },
-  { id: 'iblack',    label: 'iBlack · Producto',    icon: '🖤', group: 'Planeación' },
 
   // ── IA & Automatización ────────────────────────────────────────────────────
   { id: 'cerebro',       label: 'Infraestructura IA', icon: '🧠', group: 'IA & Automatización' },
   { id: 'agentes',       label: 'Agentes IA',         icon: '🤖', group: 'IA & Automatización' },
   { id: 'transacciones', label: 'Tokens Unificados',  icon: '🔗', group: 'IA & Automatización' },
-  { id: 'merkle',        label: 'Merkle Feed',        icon: '⛓️', group: 'IA & Automatización' },
-  { id: 'token-ai',      label: 'Consumo de Tokens',  icon: '📈', group: 'IA & Automatización' },
 
   // ── Sistema [colapsado por defecto] ────────────────────────────────────────
   { id: 'analytics',  label: 'Analytics de Uso', icon: '📊', group: 'Sistema' },
-  { id: 'reportlab',  label: 'PDF Generator',    icon: '📄', group: 'Sistema' },
   { id: 'backup',     label: 'Migración',        icon: '💾', group: 'Sistema' },
   { id: 'editor',     label: 'Configuración',    icon: '🎨', group: 'Sistema' },
   { id: 'superadmin',     label: 'Super Admin',       icon: '🔐', group: 'Sistema' },
@@ -807,12 +797,10 @@ function Content({
       {section === 'sala_juntas' && <SalaJuntasSection theme={theme} />}
       {section === 'agentes'   && <AgentesSection   theme={theme} />}
       {section === 'comite'    && <ComiteSection    theme={theme} />}
-      {section === 'token-ai'  && <TokenConsumptionSection theme={theme} />}
       {section === 'plan2026'  && <ProyectosDashboardSection />}
       {section === 'proyectos' && <ProyectosSection theme={theme} />}
       {section === 'fibra'       && <FibraSection theme={theme} />}
       {section === 'radiobases' && <RadioBasesSection theme={theme} />}
-      {section === 'estrategia2030' && <Estrategia2030Section theme={theme} />}
       {section === 'adopcion' && <AdopcionSection theme={theme} />}
       {section === 'call'     && <CallCenterHubSection />}
       {section === 'scan'          && <InventarioSection theme={theme} />}
@@ -826,7 +814,6 @@ function Content({
       {section === 'auditorias-plazas' && <AuditoriasPlazasSection theme={theme} />}
       {section === 'odoo-docs'      && <OdooDocsSection theme={theme} />}
       {section === 'flotilla'       && <FlotillaSection theme={theme} />}
-      {section === 'iblack'         && <IBlackSection theme={theme} />}
       {section === 'gerencia' && <Gerencia />}
       {section === 'ventas'              && <VentasSection theme={theme} />}
       {section === 'ventas-efectividad'  && <VentasEfectividadSection />}
@@ -836,7 +823,6 @@ function Content({
       {section === 'net2phone'  && <Net2PhoneSection />}
       {section === 'reportes-kpi' && <ReportesKPISection theme={theme} />}
       {section === 'reports' && <ReportesGobierno />}
-      {section === 'reportlab' && <ReportLabSection theme={theme} />}
       {section === 'superadmin'     && <SuperAdminSection    theme={theme} />}
       {section === 'cerebro'        && <CerebroSection       theme={theme} />}
       {section === 'usuarios-admin'     && <UsuariosAdminSection />}
@@ -919,9 +905,7 @@ function Content({
       {section === 'telegram' && <TelegramBotSection theme={theme} />}
       {section === 'docs' && <DocsSection theme={theme} />}
       {section === 'backup' && <BackupSection theme={theme} />}
-      {section === 'transacciones' && <XcienTokensSection theme={theme} />}
-      {section === 'tokens'        && <XcienTokensSection theme={theme} />}
-      {section === 'merkle'        && <MerkleFeedSection theme={theme} />}
+      {section === 'transacciones' && <TransaccionesSection theme={theme} activeThemeId={activeThemeId} />}
       {section === 'editor' && (
         <DevPanel
           theme={theme}
