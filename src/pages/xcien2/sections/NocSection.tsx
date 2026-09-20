@@ -1694,6 +1694,199 @@ const NOCBOARD_PRIORITY = [
   { name: 'WL',      port: 9401, key: '87a08190b801416392e944ab79c7e3c9' },
 ];
 
+// ── MonitoreoPanel — NOCBoard + Nebula orquestados ───────────────────────────
+function MonitoreoPanel({ cities, onSelectCity, onRefresh }: {
+  cities: NOCCity[];
+  onSelectCity: (c: NOCCity) => void;
+  onRefresh?: () => void;
+}) {
+  const [sub, setSub] = useState<'nocboard' | 'nebula'>('nocboard');
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:0, minHeight:0, overflow:'hidden' }}>
+      {/* Sub-tabs */}
+      <div style={{ display:'flex', gap:2, flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:8, marginBottom:12 }}>
+        {([['nocboard', 'NOCBoard', Layers], ['nebula', 'Nebula', Zap]] as const).map(([id, label, Icon]) => {
+          const active = sub === id;
+          return (
+            <button key={id} onClick={() => setSub(id)} style={{
+              padding:'7px 18px', fontSize:10, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
+              background: active ? G : 'rgba(255,255,255,0.04)',
+              color: active ? '#001a0d' : 'rgba(0,255,136,0.5)',
+              display:'flex', alignItems:'center', gap:5,
+              boxShadow: active ? `0 2px 10px ${G}40` : 'none',
+              transition:'all 0.15s',
+            }}>
+              <Icon size={11} />{label}
+            </button>
+          );
+        })}
+        <div style={{ marginLeft:'auto', fontSize:10, color:DIM, alignSelf:'center', fontFamily:'monospace' }}>
+          NOCBoard + Zabbix orquestados
+        </div>
+      </div>
+      {/* Content */}
+      <div style={{ flex:1, minHeight:0, overflow:'hidden', display:'flex' }}>
+        {sub === 'nocboard' ? (
+          <NocLayersPanel cities={cities} onSelectCity={onSelectCity} onRefresh={onRefresh} />
+        ) : (
+          <NebulaPanelView />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── NebulaPanelView ───────────────────────────────────────────────────────────
+const SEV_COLOR: Record<number, string> = { 0:'#6b7280', 1:'#60a5fa', 2:'#facc15', 3:'#f97316', 4:'#ef4444', 5:'#dc2626' };
+const SEV_LABEL: Record<number, string> = { 0:'NC', 1:'Info', 2:'Warning', 3:'Average', 4:'High', 5:'Disaster' };
+
+function NebulaPanelView() {
+  const [status, setStatus]     = useState<any>(null);
+  const [problems, setProblems] = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState('');
+  const [minSev, setMinSev]     = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [st, pr] = await Promise.all([
+        fetch(`${API_BASE}/api/nebula/status`).then(r => r.json()),
+        fetch(`${API_BASE}/api/nebula/problems?limit=200`).then(r => r.json()),
+      ]);
+      setStatus(st);
+      setProblems(pr.problems || []);
+    } catch { setStatus({ connected: false, error: 'Error de red' }); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useVisibleInterval(load, 30_000);
+
+  const filtered = useMemo(() =>
+    problems.filter(p =>
+      p.severity >= minSev &&
+      (!filter || p.host?.toLowerCase().includes(filter.toLowerCase()) ||
+       p.name?.toLowerCase().includes(filter.toLowerCase()))
+    ), [problems, filter, minSev]);
+
+  const bySev = useMemo(() =>
+    problems.reduce((acc, p) => { acc[p.severity] = (acc[p.severity] || 0) + 1; return acc; }, {} as Record<number,number>),
+    [problems]);
+
+  if (loading) return (
+    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color: G }}>
+      <Loader size={24} style={{ animation:'spin 1s linear infinite' }} />
+      <span style={{ marginLeft:10, fontSize:13, fontFamily:'monospace' }}>Conectando a Nebula…</span>
+    </div>
+  );
+
+  if (!status?.connected) return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12 }}>
+      <AlertTriangle size={40} color={R} />
+      <div style={{ color:R, fontWeight:700, fontSize:14 }}>Nebula no disponible</div>
+      <div style={{ color:DIM, fontSize:12, maxWidth:320, textAlign:'center' }}>
+        {status?.error || 'Verifica que la VPN esté conectada'}
+      </div>
+      <button onClick={load} style={{ padding:'8px 20px', background:G, color:'#001a0d', borderRadius:8, border:'none', fontWeight:700, fontSize:11, cursor:'pointer' }}>
+        Reintentar
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:12, overflow:'hidden', minHeight:0 }}>
+      {/* Header Nebula */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+        <div style={{ display:'flex', gap:10 }}>
+          <div style={{ padding:'6px 14px', background:'rgba(0,255,136,0.08)', border:`1px solid ${G}30`, borderRadius:20, fontSize:10, fontWeight:700, color:G, fontFamily:'monospace' }}>
+            ⚡ ZABBIX {status.zabbix?.hosts} hosts
+          </div>
+          <div style={{ padding:'6px 14px', background: status.grafana?.connected ? 'rgba(96,165,250,0.08)' : 'rgba(255,51,102,0.08)', border:`1px solid ${status.grafana?.connected ? '#60a5fa' : R}30`, borderRadius:20, fontSize:10, fontWeight:700, color: status.grafana?.connected ? '#60a5fa' : R, fontFamily:'monospace' }}>
+            📊 GRAFANA {status.grafana?.connected ? 'OK' : 'OFFLINE'}
+          </div>
+        </div>
+        <div style={{ flex:1 }} />
+        {/* Grafana link */}
+        {status.grafana?.connected && (
+          <a href={status.grafana.url} target="_blank" rel="noreferrer" style={{ padding:'6px 14px', background:'rgba(96,165,250,0.1)', border:'1px solid rgba(96,165,250,0.2)', borderRadius:8, fontSize:10, fontWeight:700, color:'#60a5fa', textDecoration:'none' }}>
+            Abrir Grafana ↗
+          </a>
+        )}
+        <button onClick={load} style={{ padding:'6px 14px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, fontSize:10, color:DIM, cursor:'pointer' }}>
+          ↻ Actualizar
+        </button>
+      </div>
+
+      {/* Severity KPIs */}
+      <div style={{ display:'flex', gap:8, flexShrink:0, flexWrap:'wrap' }}>
+        {([5,4,3,2,1,0] as const).map(sev => {
+          const count = bySev[sev] || 0;
+          const color = SEV_COLOR[sev];
+          return (
+            <button key={sev} onClick={() => setMinSev(minSev === sev ? 0 : sev)} style={{
+              padding:'8px 14px', borderRadius:10, border:`1px solid ${color}${minSev === sev ? 'aa' : '30'}`,
+              background: minSev === sev ? `${color}20` : 'rgba(0,0,0,0.2)',
+              cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, minWidth:72,
+            }}>
+              <span style={{ fontSize:18, fontWeight:900, color, fontFamily:'monospace' }}>{count}</span>
+              <span style={{ fontSize:9, fontWeight:700, color, letterSpacing:1 }}>{SEV_LABEL[sev]}</span>
+            </button>
+          );
+        })}
+        <div style={{ flex:1, minWidth:160 }}>
+          <input
+            value={filter} onChange={e => setFilter(e.target.value)}
+            placeholder="Filtrar host o problema…"
+            style={{ width:'100%', padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', boxSizing:'border-box' }}
+          />
+        </div>
+      </div>
+
+      {/* Problems table */}
+      <div style={{ flex:1, overflowY:'auto', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, fontFamily:'monospace' }}>
+          <thead>
+            <tr style={{ background:'rgba(0,0,0,0.4)', position:'sticky', top:0 }}>
+              {['Severidad','Host','Problema','Hora','ACK'].map(h => (
+                <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:DIM, fontWeight:700, fontSize:10, letterSpacing:1, borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:DIM }}>
+                {problems.length === 0 ? '✅ Sin problemas activos' : 'Sin resultados para el filtro'}
+              </td></tr>
+            ) : filtered.map((p, i) => {
+              const color = SEV_COLOR[p.severity] || '#6b7280';
+              const ts = p.clock ? new Date(parseInt(p.clock) * 1000).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '?';
+              return (
+                <tr key={p.id} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
+                  <td style={{ padding:'7px 12px' }}>
+                    <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:10, background:`${color}20`, color, fontSize:9, fontWeight:700, letterSpacing:1 }}>
+                      {p.severity_label}
+                    </span>
+                  </td>
+                  <td style={{ padding:'7px 12px', color:'#e2e8f0', fontWeight:600, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.host}</td>
+                  <td style={{ padding:'7px 12px', color:DIM, maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</td>
+                  <td style={{ padding:'7px 12px', color:DIM, whiteSpace:'nowrap' }}>{ts}</td>
+                  <td style={{ padding:'7px 12px', textAlign:'center' }}>
+                    {p.acknowledged ? <CheckCircle size={13} color={G} /> : <span style={{ color:DIM, fontSize:10 }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ color:DIM, fontSize:10, textAlign:'right', flexShrink:0 }}>
+        {filtered.length} de {problems.length} problemas · Zabbix 7.0 · Actualiza cada 30s
+      </div>
+    </div>
+  );
+}
+
 export default function NocSection({
   theme,
   cities = [],
@@ -1858,7 +2051,7 @@ export default function NocSection({
             </button>
           )}
         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', padding: 3, borderRadius: 12, gap: 2 }}>
-          {([['map', 'Mapa', Map], ['grid', 'Rejilla', LayoutGrid], ['capas', 'NOCBoard', Layers], ['reportes', 'Reporte', Activity]] as const).map(([id, label, Icon]) => {
+          {([['map', 'Mapa', Map], ['grid', 'Rejilla', LayoutGrid], ['capas', 'Monitoreo', Layers], ['reportes', 'Reporte', Activity]] as const).map(([id, label, Icon]) => {
             const active = view === id;
             return (
               <button key={id} onClick={() => { trackTab(id); setView(id as any); }} style={{
@@ -1928,7 +2121,7 @@ export default function NocSection({
             )}
           </>
         ) : view === 'capas' ? (
-          <NocLayersPanel cities={cities} onSelectCity={handleSelectCity} onRefresh={onRefresh} />
+          <MonitoreoPanel cities={cities} onSelectCity={handleSelectCity} onRefresh={onRefresh} />
         ) : null}
       </div>
 

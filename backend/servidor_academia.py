@@ -634,6 +634,44 @@ class BridgeRequest(BaseModel):
     status: str = "working"
     log_entry: str = ""
 
+# ─── Nebula — Zabbix + Grafana ────────────────────────────────────────────────
+_NEBULA_ZABBIX_URL  = os.environ.get("NEBULA_ZABBIX_URL", "")
+_NEBULA_ZABBIX_USER = os.environ.get("NEBULA_ZABBIX_USER", "")
+_NEBULA_ZABBIX_PASS = os.environ.get("NEBULA_ZABBIX_PASSWORD", "")
+_NEBULA_GRAFANA_URL = os.environ.get("NEBULA_GRAFANA_URL", "")
+_NEBULA_GRAFANA_TOK = os.environ.get("NEBULA_GRAFANA_TOKEN", "")
+_zabbix_auth_token: dict = {"token": None, "ts": 0.0}
+
+def _zabbix_login():
+    import time
+    if _zabbix_auth_token["token"] and (time.time() - _zabbix_auth_token["ts"]) < 3600:
+        return _zabbix_auth_token["token"]
+    if not _NEBULA_ZABBIX_URL:
+        return None
+    try:
+        import requests as _req
+        r = _req.post(f"{_NEBULA_ZABBIX_URL}/api_jsonrpc.php",
+            json={"jsonrpc":"2.0","method":"user.login",
+                  "params":{"username":_NEBULA_ZABBIX_USER,"password":_NEBULA_ZABBIX_PASS},"id":1},
+            timeout=8)
+        tok = r.json().get("result")
+        if tok:
+            _zabbix_auth_token["token"] = tok
+            _zabbix_auth_token["ts"] = time.time()
+        return tok
+    except Exception:
+        return None
+
+def _zabbix(method: str, params: dict):
+    import requests as _req
+    tok = _zabbix_login()
+    if not tok:
+        return []
+    r = _req.post(f"{_NEBULA_ZABBIX_URL}/api_jsonrpc.php",
+        json={"jsonrpc":"2.0","method":method,"params":params,"auth":tok,"id":1},
+        timeout=12)
+    return r.json().get("result", [])
+
 # ─── Cliente Odoo ─────────────────────────────────────────────────────────────
 ODOO_URL = os.environ.get("ODOO_URL")
 ODOO_DB = os.environ.get("ODOO_DB")
@@ -13757,6 +13795,119 @@ def get_backlog_comercial(force: bool = False):
             return {**_BACKLOG_COM_CACHE["data"], "cached": True, "error": str(e)}
         raise HTTPException(status_code=502, detail=f"Error cargando backlog comercial: {e}")
 
+
+# ─── Nebula endpoints ─────────────────────────────────────────────────────────
+
+@app.get("/api/nebula/status")
+async def nebula_status():
+    try:
+        tok = _zabbix_login()
+        if not tok:
+            return {"connected": False, "error": "VPN no conectada o credenciales incorrectas"}
+        import requests as _req
+        hc = _req.post(f"{_NEBULA_ZABBIX_URL}/api_jsonrpc.php",
+            json={"jsonrpc":"2.0","method":"host.get","params":{"countOutput":True},"auth":tok,"id":2},timeout=8).json()
+        pc = _req.post(f"{_NEBULA_ZABBIX_URL}/api_jsonrpc.php",
+            json={"jsonrpc":"2.0","method":"problem.get","params":{"countOutput":True},"auth":tok,"id":3},timeout=8).json()
+        gok = False
+        try:
+            gr = _req.get(f"{_NEBULA_GRAFANA_URL}/api/health", timeout=5)
+            gok = gr.status_code == 200
+        except Exception:
+            pass
+        return {
+            "connected": True,
+            "zabbix": {"hosts": int(hc.get("result", 0)), "problems": int(pc.get("result", 0))},
+            "grafana": {"connected": gok, "url": _NEBULA_GRAFANA_URL},
+        }
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+@app.get("/api/nebula/problems")
+async def nebula_problems(limit: int = 200, min_severity: int = 0):
+    try:
+        SEV = {0:"NC", 1:"Info", 2:"Warning", 3:"Average", 4:"High", 5:"Disaster"}
+        SEV_COLOR = {0:"#6b7280", 1:"#60a5fa", 2:"#facc15", 3:"#f97316", 4:"#ef4444", 5:"#dc2626"}
+        # Zabbix 7: usar trigger.get con value=1 (activo) + selectHosts
+        params = {
+            "output": ["triggerid", "description", "priority", "lastchange"],
+            "selectHosts": ["hostid", "host", "name"],
+            "only_true": True,
+            "monitored": True,
+            "active": True,
+            "skipDependent": True,
+            "filter": {"value": "1"},
+            "sortfield": "lastchange",
+            "sortorder": "DESC",
+            "limit": limit,
+        }
+        if min_severity > 0:
+            params["min_severity"] = str(min_severity)
+        triggers = _zabbix("trigger.get", params)
+        result = []
+        for t in triggers:
+            sev = int(t.get("priority", 0))
+            if sev < min_severity:
+                continue
+            hosts = t.get("hosts", [])
+            result.append({
+                "id": t.get("triggerid"),
+                "name": t.get("description"),
+                "severity": sev,
+                "severity_label": SEV.get(sev, "?"),
+                "severity_color": SEV_COLOR.get(sev, "#6b7280"),
+                "clock": t.get("lastchange"),
+                "host": hosts[0].get("name") if hosts else "?",
+                "host_id": hosts[0].get("hostid") if hosts else None,
+                "acknowledged": False,
+            })
+        return {"problems": result, "count": len(result)}
+    except Exception as e:
+        return {"problems": [], "count": 0, "error": str(e)}
+
+@app.get("/api/nebula/hosts")
+async def nebula_hosts_list(with_problems: bool = True, limit: int = 200):
+    try:
+        params = {
+            "output": ["hostid", "host", "name", "available", "status", "description"],
+            "selectInterfaces": ["ip", "type"],
+            "limit": limit,
+            "sortfield": "name",
+        }
+        if with_problems:
+            params["monitored_hosts"] = True
+            params["with_active_triggers"] = True
+        hosts = _zabbix("host.get", params)
+        # available: 0=unknown 1=available 2=unavailable
+        AVAIL = {0: "unknown", 1: "up", 2: "down"}
+        result = []
+        for h in hosts:
+            ifaces = h.get("interfaces", [])
+            ip = ifaces[0].get("ip") if ifaces else ""
+            avail = int(h.get("available", 0))
+            result.append({
+                "id": h.get("hostid"),
+                "name": h.get("name") or h.get("host"),
+                "host": h.get("host"),
+                "ip": ip,
+                "available": avail,
+                "status_label": AVAIL.get(avail, "unknown"),
+                "enabled": h.get("status") == "0",
+            })
+        return {"hosts": result, "count": len(result)}
+    except Exception as e:
+        return {"hosts": [], "count": 0, "error": str(e)}
+
+@app.get("/api/nebula/grafana/dashboards")
+async def nebula_grafana_dashboards():
+    try:
+        import requests as _req
+        headers = {"Authorization": f"Bearer {_NEBULA_GRAFANA_TOK}"} if _NEBULA_GRAFANA_TOK else {}
+        r = _req.get(f"{_NEBULA_GRAFANA_URL}/api/search?type=dash-db&limit=50", headers=headers, timeout=8)
+        boards = r.json() if r.ok else []
+        return {"dashboards": boards, "grafana_url": _NEBULA_GRAFANA_URL}
+    except Exception as e:
+        return {"dashboards": [], "error": str(e)}
 
 # ─── SPA Fallback ─────────────────────────────────────────────────────────────
 
