@@ -3218,6 +3218,18 @@ AGENTS_CATALOG = [
      "rol": "Canal de Comunicación", "endpoint": None,
      "descripcion": "Bot activo en Telegram — recibe órdenes y envía alertas en tiempo real",
      "capacidades": ["Alertas NOC", "Comandos operativos", "Reportes express", "Notificaciones"]},
+    {"id": "cx",         "nombre": "CX Agent",              "icon": "🎧", "color": "#EC4899",
+     "rol": "Atención al Cliente", "endpoint": "/api/agentes/cx/chat",
+     "descripcion": "Satisfacción de clientes, tickets de soporte, NPS y experiencia de usuario",
+     "capacidades": ["Estado del servicio", "Tickets abiertos", "Cancelaciones", "NPS"]},
+    {"id": "comercial",  "nombre": "Comercial Agent",       "icon": "📈", "color": "#F59E0B",
+     "rol": "Ventas & Pipeline", "endpoint": "/api/agentes/comercial/chat",
+     "descripcion": "Pipeline de ventas, prospectos, MRR, cuotas y oportunidades",
+     "capacidades": ["Pipeline activo", "MRR actual", "Cuotas del mes", "Prospectos nuevos"]},
+    {"id": "flotilla",   "nombre": "Flotilla Agent",        "icon": "🚛", "color": "#10B981",
+     "rol": "GPS & Vehículos", "endpoint": "/api/agentes/flotilla/chat",
+     "descripcion": "Control de flotilla, GPS TN360, velocidades, rutas y mantenimiento",
+     "capacidades": ["Vehículos activos", "Alertas velocidad", "Rutas del día", "Mantenimiento"]},
 ]
 
 _agent_activity: dict = {}  # agent_id -> {"last_msg": str, "last_ts": str, "calls": int}
@@ -3245,7 +3257,8 @@ def get_agentes_status(_user: dict = Depends(get_current_user)):
         # Determinar status
         if ag["id"] == "telegram":
             status = "online" if tg_status == "online" else "offline"
-        elif ag["id"] in ("director", "devops", "noc", "wfm", "academia", "finanzas", "inventario"):
+        elif ag["id"] in ("director", "devops", "noc", "wfm", "academia", "finanzas", "inventario",
+                          "cx", "comercial", "flotilla"):
             status = "online" if backend_ok else "offline"
             if act.get("working"):
                 status = "busy"
@@ -3291,6 +3304,9 @@ def agentes_chat_unificado(req: AgentChatRequest, _user: dict = Depends(get_curr
         "academia":  "Eres el Agente Academia de XCIEN. Experto en cursos de certificación, progreso de técnicos, exámenes, escalafón técnico y desarrollo de talento en telecomunicaciones. Responde en español.",
         "finanzas":  "Eres el Agente Finanzas de XCIEN. Experto en reportes financieros, facturación Odoo, transacciones, tokens de servicio, KPIs financieros y control presupuestal. Responde en español.",
         "inventario":"Eres el Agente Inventario de XCIEN. Experto en gestión de equipos, activos de red, stock de materiales, movimientos de almacén y auditoría de activos. Responde en español.",
+        "cx":        "Eres el CX Agent de XCIEN Networks. Tu rol es analizar y mejorar la experiencia del cliente. Tienes acceso conceptual a: tickets de soporte activos, historial de cancelaciones, NPS y satisfacción. Responde en español, de forma concisa y orientada a soluciones. Si no tienes datos reales en tiempo real, explica qué métricas monitoreas y cómo ayudarías a resolverlo.",
+        "comercial": "Eres el Comercial Agent de XCIEN Networks. Tu rol es analizar ventas, pipeline y MRR. Tienes acceso conceptual a: pipeline de ventas Odoo, cuotas mensuales, prospectos activos, MRR. Responde en español, orientado a resultados comerciales. Si no tienes datos en tiempo real, explica los KPIs que monitoreas y cómo ayudarías al equipo comercial.",
+        "flotilla":  "Eres el Flotilla Agent de XCIEN Networks. Tu rol es gestionar la flotilla de vehículos. Tienes acceso conceptual a: GPS TN360, 32 vehículos activos, alertas de velocidad >100km/h, cruce de rutas con tickets Odoo Field Service. Responde en español, orientado a operaciones de campo y seguridad vial.",
     }
 
     try:

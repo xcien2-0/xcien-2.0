@@ -56,6 +56,20 @@
 **Usuarios:** Rodrigo Flores, Mayra Tamez, Maribel Baldo, Ernesto Villareal, Yuliana
 **Qué hacer:** Cuando lleguen los accesos Odoo, crear cuentas con roles correctos y coordinar onboarding.
 
+### T017 — Secciones pendientes: conectar datos reales
+**Estado:** Pending — 5 subtareas independientes, reclamables por separado
+**Archivos:** `src/pages/xcien2/sections/`
+**Contexto:** secciones marcadas "pendiente funcional" en la revisión de 66 secciones del 2026-09-20.
+
+- **T017a — `IntegridadSection.tsx`** — conectar antifraude Odoo: facturas sin PO, pagos sin 2° aprobador. Endpoint nuevo `/api/integridad/*` en `backend/servidor_academia.py`, registrado ANTES del catch-all SPA. **Agente:** backend-developer → frontend-developer.
+- **T017b — `AdopcionSection.tsx`** — tracking de uso real del portal: secciones más visitadas por rol. Hoy no existe telemetría; hay que decidir dónde se registran los eventos antes de escribir código. **Agente:** backend-developer → frontend-developer.
+- **T017c — `ComiteSection.tsx`** — actas y compromisos de mesa de trabajo. **Falta decisión:** fuente = Odoo, archivo en el repo, o captura manual en el portal. **Agente:** frontend-developer.
+- **T017d — `ImpactoSection.tsx`** — métricas reales: tickets cerrados (Odoo CAST), uptime (Nebula), ROI (fórmula pendiente de definir). **Agente:** backend-developer → frontend-developer.
+- **T017e — `AuditoriasPlazasSection.tsx`** — plazas foráneas (COA, NL, TAM) con checklist dinámico. **Agente:** frontend-developer.
+
+**Orden recomendado:** T017a → T017d → T017e → T017b → T017c.
+**Dependencias:** cada subtarea es backend-primero salvo T017e. T017b se superpone con T011 — si T017b entra primero, T011 queda reducida a FodaSection. T017c está en bloqueo suave hasta la decisión de fuente.
+
 ---
 
 ## Media prioridad
@@ -63,7 +77,7 @@
 ### T008 — Academia: conectar leaderboard a endpoint real
 **Estado:** Pending
 **Archivos:** `src/pages/xcien2/sections/AcademiaSection.tsx`
-**Qué hacer:** El leaderboard está hardcodeado. Crear endpoint en backend que lea ranking de Odoo eLearning y conectarlo. El `organizer` debe detallar qué campos exponer.
+**Qué hacer:** El leaderboard está hardcodeado. Crear endpoint en backend que lea ranking de Odoo eLearning y conectarlo.
 **Agente:** backend-developer
 
 ### T009 — Toggle OnNet/OffNet en FibraSection y xcien-mapa-red
@@ -82,6 +96,18 @@
 **Archivos:** `src/pages/xcien2/sections/FodaSection.tsx`, `src/pages/xcien2/sections/AdopcionSection.tsx`
 **Qué hacer:** Agregar banner visible "Estos datos son de demostración — pendiente conectar fuente real" para no confundir a usuarios beta.
 **Agente:** frontend-developer
+**Dependencia:** solapa con T017b. Si T017b se hace primero, esta tarea se reduce a FodaSection.
+
+### T016 — AgentesSection: mejoras UI + nuevos agentes
+**Estado:** In Progress — 2026-09-20
+**Archivos:** `src/pages/xcien2/sections/AgentesSection.tsx`, `backend/servidor_academia.py` (`AGENTS_CATALOG` línea ~3190, `_agent_activity` línea ~3223)
+**Qué hacer:**
+1. **Backend** — agregar 3 agentes al `AGENTS_CATALOG` (8 → 11): CX Agent (`#EC4899`), Comercial Agent (`#F59E0B`), Flotilla Agent (`#10B981`).
+2. **Backend** — `calls_today`: agregar reset diario — hoy el contador es acumulado desde el arranque del proceso, no "de hoy".
+3. **Backend** — `last_msg`: cambiar de string a lista de hasta 3 mensajes para historial visible en UI.
+4. **Frontend** — subheader con total `8 → 11 agentes`, log de actividad visible (últimas 3 consultas), mejor estado vacío.
+**Agente:** backend-developer (1-3) → frontend-developer (4)
+**Nota:** backend primero. El frontend necesita el shape del historial antes de tocar la UI.
 
 ---
 
@@ -92,20 +118,50 @@
 **Qué hacer:** `servidor_academia.py` supera 13,000 líneas. Dividir en routers FastAPI separados por dominio: noc, wfm, inventario, ventas, rrhh, academia, backlog, tokens, telegram. No cambiar comportamiento.
 **Agente:** programmer
 
-### T013 — War Room: conectar agentes reales
+### T018 — Guías Odoo: rediseño + migrar a Academia
 **Estado:** Pending
-**Archivos:** `src/pages/xcien2/index.tsx` (sección War Room inline)
-**Qué hacer:** War Room tiene conversación estática. Conectar a `/api/agentes/chat` para ejecutar agentes reales en tiempo real.
-**Agente:** backend-developer
+**Archivos:** `src/pages/xcien2/sections/OdooDocsSection.tsx` (registrada como `section === 'odoo-docs'` en `src/pages/xcien2/index.tsx`)
+**Qué hacer:** El contenido es estático. Dos pasos:
+1. Rediseño estético de la sección, alineado al sistema de temas del portal.
+2. Migrar el contenido a módulos de Academia XCIEN en Odoo 19 eLearning; la sección queda como índice/enlace.
+**Agente:** frontend-developer (paso 1) · backend-developer (paso 2, carga en Odoo)
+**Dependencia:** el paso 2 necesita acordar a qué curso de Academia van los procesos — coordinar con Mayra Tamez (titular Academia).
 
-### T014 — Nebula: integración monitoreo vía VPN
-**Estado:** Blocked — esperando accesos de Hinojosa
-**Qué hacer:** Integrar sistema de monitoreo "Nebula" al xcien-portal. El sistema corre en una IP privada accesible vía OpenVPN. Con los accesos, añadir variables al `.env` y crear endpoint `/api/nebula/*` + sección en el portal.
-**Contacto:** Hinojosa (XCIEN TI) — solicitar: IP del servidor, archivo .ovpn, credenciales API de Nebula
-**Agente:** backend-developer
+### T019 — Simplifier: borrar 7 archivos .tsx huérfanos
+**Estado:** Pending
+**Archivos:** `src/pages/xcien2/sections/WarRoomSection.tsx`, `MerkleFeedSection.tsx`, `Estrategia2030Section.tsx`, `IBlackSection.tsx`, `XcienTokensSection.tsx`, `TokenConsumptionSection.tsx`, `ReportLabSection.tsx`
+**Qué hacer:** Confirmar que ninguno está importado fuera de `index.tsx`, luego borrar. Verificar con grep en todo `src/` antes de borrar.
+**Agente:** simplifier
+
+### T020 — Documenter: actualizar tabla de secciones en CLAUDE.md
+**Estado:** Pending
+**Archivos:** `CLAUDE.md`
+**Qué hacer:** La tabla de secciones en `CLAUDE.md` del repo todavía lista secciones removidas (XcienTokens, War Room, ReportLab) como activas. Actualizar para reflejar el estado real: 48 secciones activas + 7 removidas.
+**Agente:** documenter
 
 ---
 
 ## Completadas
 
-*(ninguna aún — este archivo se creó el 2026-09-19)*
+### T014 — Nebula: integración monitoreo vía VPN
+**Estado:** Done — 2026-09-20
+**Nota:** Nebula integrado en Railway production. Operativo dentro de NOC Virtual. Ya no depende de los accesos de Hinojosa.
+
+### T013 — War Room: conectar agentes reales
+**Estado:** Done — 2026-09-20
+**Nota:** Removida de portal 2026-09-20. La sección War Room salió del portal en la revisión de 66 secciones. Cerrada por remoción, no implementada.
+
+### Revisión de 66 secciones — 7 removidas del portal
+**Estado:** Done — 2026-09-20
+**Nota:** Removidas: Estrategia 2030, PDF Generator, XcienTokens, TokenConsumption, iBlack, War Room, Merkle Feed.
+
+### NOCBoard: fix de proxy
+**Estado:** Done — 2026-09-20
+**Nota:** `.env` cambiado de `172.26.11.43:9400` → `localhost:9400`.
+
+---
+
+## Notas de drift (sin tarea asignada — pendiente decisión)
+
+1. **T015 cross-repo.** hub-personal tiene su propio `TASKS.md` en el loop autónomo. hub-personal PM2 ya verificado (2026-09-20): ecosistemas separados, `gmail-meeting-sync` re-registrado, bloqueador real = falta `credentials.json` OAuth de Gmail. No abre tarea aquí para evitar dos fuentes de verdad.
+2. **T007 (cuentas beta)** sigue bloqueado. Solicitud Odoo TI-2026-001 sin respuesta conocida.

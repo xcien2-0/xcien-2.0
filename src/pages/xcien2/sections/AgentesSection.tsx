@@ -73,6 +73,7 @@ function ChatPanel({ agente, theme, onClose }: { agente: Agente; theme: ThemeCon
       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <style>{`@keyframes agente-busy-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.25; transform: scale(0.75); } }`}</style>
       <div style={{
         width: 620, maxWidth: '95vw', height: 580, display: 'flex', flexDirection: 'column',
         background: theme.card, border: `1px solid ${agente.color}40`,
@@ -86,7 +87,17 @@ function ChatPanel({ agente, theme, onClose }: { agente: Agente; theme: ThemeCon
             <div style={{ fontWeight: 800, color: agente.color, fontSize: 15 }}>{agente.nombre}</div>
             <div style={{ fontSize: 10, color: theme.dim }}>{agente.rol}</div>
           </div>
-          <StatusDot status={agente.status} />
+          {agente.status === 'busy' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#FFB703' }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%', background: '#FFB703', flexShrink: 0,
+                animation: 'agente-busy-pulse 1.1s ease-in-out infinite',
+              }} />
+              Procesando
+            </span>
+          ) : (
+            <StatusDot status={agente.status} />
+          )}
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: theme.dim, fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>✕</button>
         </div>
 
@@ -300,8 +311,17 @@ export default function AgentesSection({ theme }: { theme: ThemeConfig }) {
         </div>
       )}
 
+      {/* Subheader */}
+      {!loading && agentes.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.dim, marginTop: -8 }}>
+          <span style={{ color: theme.text, fontWeight: 700 }}>8 → 11 agentes</span>
+          <span>·</span>
+          <span style={{ color: '#00ff88' }}>{online} en línea</span>
+        </div>
+      )}
+
       {/* Agent grid */}
-      {!loading && (
+      {!loading && agentes.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 18 }}>
           {agentes.map(ag => (
             <AgenteCard
@@ -311,6 +331,29 @@ export default function AgentesSection({ theme }: { theme: ThemeConfig }) {
               onChat={() => setChatAg(ag)}
             />
           ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && agentes.length === 0 && (
+        <div style={{
+          textAlign: 'center', padding: '48px 24px', color: theme.dim,
+          background: theme.card, border: `1px dashed ${theme.border}`, borderRadius: 16,
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, marginBottom: 6 }}>
+            Sin agentes disponibles
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.6, maxWidth: 460, margin: '0 auto' }}>
+            El backend no devolvió ningún agente. Verifica que el servicio esté activo
+            y que <code style={{ color: theme.text }}>/api/agentes/status</code> responda.
+          </div>
+          <button onClick={fetchStatus} style={{
+            marginTop: 18, padding: '8px 18px', borderRadius: 10, cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 12,
+          }}>
+            🔄 Reintentar
+          </button>
         </div>
       )}
 
