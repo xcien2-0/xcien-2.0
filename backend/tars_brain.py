@@ -23,7 +23,7 @@ from pathlib import Path
 
 VAULT_PATH   = Path(os.environ.get(
     "XCIEN_VAULT_PATH",
-    str(Path.home() / "Documents" / "XCIEN-Vault")
+    str(Path.home() / "Documents" / "xcien" / "XCIEN-Vault")
 ))
 CEREBRO_DIR  = VAULT_PATH / "00-Cerebro"
 MASTER_FILE  = CEREBRO_DIR / "contexto-maestro.md"

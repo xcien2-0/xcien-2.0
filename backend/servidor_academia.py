@@ -13491,6 +13491,7 @@ def get_atc_efectividad(dias: int = 30):
 import time as _time_mod
 
 _BACKLOG_CACHE: dict = {"ts": 0, "data": None}
+_BACKLOG_COM_CACHE: dict = {"ts": 0, "data": None}
 _BACKLOG_TTL = 86400  # 24 horas
 
 BACKLOG_TEAM_IDS  = [6, 39, 60, 67, 41, 48, 44, 42, 8]
@@ -13568,7 +13569,7 @@ def _build_backlog() -> dict:
 
     # Acumular por municipio y por técnico
     from collections import defaultdict
-    muni_data: dict = defaultdict(lambda: {"fallas": 0, "hab": 0, "ages": [], "state": ""})
+    muni_data: dict = defaultdict(lambda: {"fallas": 0, "hab": 0, "ages": [], "state": "", "tickets": []})
     tec_data:  dict = defaultdict(lambda: {"fallas": 0, "hab": 0, "ages": [], "plazas": set()})
     total_ages = []
 
@@ -13581,10 +13582,20 @@ def _build_backlog() -> dict:
         tid   = t["ticket_type_id"][0] if t["ticket_type_id"] else 0
         cat   = "fallas" if tid in BACKLOG_FALLA_IDS else "hab"
         age   = age_days(t)
+        partner_name = t["partner_id"][1] if t["partner_id"] else "Sin cliente"
 
         muni_data[city]["fallas" if cat == "fallas" else "hab"] += 1
         muni_data[city]["ages"].append(age)
         muni_data[city]["state"] = _shorten_state(state)
+        muni_data[city]["tickets"].append({
+            "id":       t["id"],
+            "name":     t.get("name") or "",
+            "cat":      cat,
+            "stage":    t["stage_id"][1] if t.get("stage_id") else "?",
+            "tec":      tec,
+            "partner":  partner_name,
+            "age_days": age,
+        })
 
         tec_data[tec]["fallas" if cat == "fallas" else "hab"] += 1
         tec_data[tec]["ages"].append(age)
@@ -13598,6 +13609,7 @@ def _build_backlog() -> dict:
     for city, d in sorted(muni_data.items(), key=lambda x: -(x[1]["fallas"]+x[1]["hab"])):
         coords = MUNI_COORDS.get(city, (None, None))
         total  = d["fallas"] + d["hab"]
+        sorted_tickets = sorted(d["tickets"], key=lambda x: -x["age_days"])
         munis.append({
             "municipio": city,
             "estado":    d["state"],
@@ -13607,6 +13619,7 @@ def _build_backlog() -> dict:
             "mediana":   med(d["ages"]),
             "lat":       coords[0],
             "lon":       coords[1],
+            "tickets":   sorted_tickets,
         })
 
     tecnicos = []
@@ -13653,6 +13666,96 @@ def get_backlog_ops(force: bool = False):
         if _BACKLOG_CACHE["data"]:
             return {**_BACKLOG_CACHE["data"], "cached": True, "error": str(e)}
         raise HTTPException(status_code=502, detail=f"Error cargando backlog: {e}")
+
+
+def _build_backlog_comercial() -> dict:
+    """Consulta CRM leads activos (NL) agrupados por municipio y etapa."""
+    import xmlrpc.client as _xr
+    from datetime import datetime as _dt
+    from collections import defaultdict
+
+    odoo_url  = os.environ.get("ODOO_URL", "https://odoo.wispi.mx")
+    odoo_db   = os.environ.get("ODOO_DB", "wispi19")
+    odoo_user = os.environ.get("ODOO_USER")
+    odoo_pass = os.environ.get("ODOO_PASSWORD")
+
+    common = _xr.ServerProxy(f"{odoo_url}/xmlrpc/2/common")
+    uid = common.authenticate(odoo_db, odoo_user, odoo_pass, {})
+    m   = _xr.ServerProxy(f"{odoo_url}/xmlrpc/2/object")
+
+    # Leads activos (no perdidos/ganados) con estado NL
+    leads = m.execute_kw(odoo_db, uid, odoo_pass, "crm.lead", "search_read",
+        [[["active", "=", True],
+          ["probability", "not in", [0, 100]],
+          ["partner_id.state_id.code", "=", "NL"]]],
+        {"fields": ["id", "stage_id", "city", "partner_id", "user_id"], "limit": 2000})
+
+    STAGE_MAP = {
+        "negociación": "Negociacion", "negociacion": "Negociacion",
+        "habilitación": "Habilitacion", "habilitacion": "Habilitacion",
+        "contratación": "Contratacion", "contratacion": "Contratacion",
+        "calificación": "Calificacion", "calificacion": "Calificacion",
+        "facturación": "Facturacion", "facturacion": "Facturacion",
+        "pre-venta": "Pre-Venta", "preventa": "Pre-Venta",
+        "estudio": "Estudio",
+    }
+    ACTIVE_STAGES = {"Habilitacion", "Contratacion", "Calificacion", "Facturacion", "Estudio"}
+
+    muni: dict = defaultdict(lambda: {"stages": defaultdict(int), "active": 0, "total": 0})
+    for l in leads:
+        raw_stage = (l["stage_id"][1] if l.get("stage_id") else "?").lower().strip()
+        stage = next((v for k, v in STAGE_MAP.items() if k in raw_stage), raw_stage.title()[:16])
+        city  = (l.get("city") or "Sin ciudad").strip()
+        if not city or city.lower() in {"false", "none"}:
+            city = "Sin ciudad"
+        muni[city]["stages"][stage] += 1
+        muni[city]["total"] += 1
+        if stage in ACTIVE_STAGES:
+            muni[city]["active"] += 1
+
+    munis_out = []
+    for city, d in sorted(muni.items(), key=lambda x: -x[1]["total"]):
+        coords = MUNI_COORDS.get(city, (None, None))
+        if not coords[0]:
+            for k, v in MUNI_COORDS.items():
+                if k.lower() in city.lower() or city.lower() in k.lower():
+                    coords = v
+                    break
+        munis_out.append({
+            "municipio": city,
+            "total":     d["total"],
+            "active":    d["active"],
+            "stages":    dict(sorted(d["stages"].items(), key=lambda x: -x[1])),
+            "lat":       coords[0],
+            "lon":       coords[1],
+        })
+
+    total = sum(l["total"] for l in munis_out)
+    total_active = sum(l["active"] for l in munis_out)
+    return {
+        "total":        total,
+        "total_active": total_active,
+        "municipios":   munis_out,
+        "updated_at":   _dt.now().isoformat(),
+    }
+
+
+@app.get("/api/backlog/comercial")
+def get_backlog_comercial(force: bool = False):
+    """Pipeline CRM activo NL agrupado por municipio y etapa.
+    Caché 24 horas. force=true para refrescar."""
+    global _BACKLOG_COM_CACHE
+    now_ts = _time_mod.time()
+    if not force and _BACKLOG_COM_CACHE["data"] and (now_ts - _BACKLOG_COM_CACHE["ts"]) < _BACKLOG_TTL:
+        return {**_BACKLOG_COM_CACHE["data"], "cached": True}
+    try:
+        data = _build_backlog_comercial()
+        _BACKLOG_COM_CACHE = {"ts": now_ts, "data": data}
+        return {**data, "cached": False}
+    except Exception as e:
+        if _BACKLOG_COM_CACHE["data"]:
+            return {**_BACKLOG_COM_CACHE["data"], "cached": True, "error": str(e)}
+        raise HTTPException(status_code=502, detail=f"Error cargando backlog comercial: {e}")
 
 
 # ─── SPA Fallback ─────────────────────────────────────────────────────────────
