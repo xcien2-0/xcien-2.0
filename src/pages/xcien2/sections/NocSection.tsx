@@ -1739,13 +1739,402 @@ function MonitoreoPanel({ cities, onSelectCity, onRefresh }: {
 // ── NebulaPanelView ───────────────────────────────────────────────────────────
 const SEV_COLOR: Record<number, string> = { 0:'#6b7280', 1:'#60a5fa', 2:'#facc15', 3:'#f97316', 4:'#ef4444', 5:'#dc2626' };
 const SEV_LABEL: Record<number, string> = { 0:'NC', 1:'Info', 2:'Warning', 3:'Average', 4:'High', 5:'Disaster' };
+const SEV_EMOJI: Record<number, string> = { 0:'⚪', 1:'🔵', 2:'🟡', 3:'🟠', 4:'🔴', 5:'⛔' };
+
+// ── Nebula: sub-tab Problemas ─────────────────────────────────────────────────
+function NebulaProblemasTab({ problems, onReload }: { problems: any[]; onReload: () => void }) {
+  const [filter, setFilter]   = useState('');
+  const [minSev, setMinSev]   = useState(0);
+  const [acking, setAcking]   = useState<string | null>(null);
+  const [ticketing, setTicketing] = useState<any | null>(null);
+  const [alerting, setAlerting]   = useState<any | null>(null);
+
+  const filtered = useMemo(() =>
+    problems.filter(p =>
+      p.severity >= minSev &&
+      (!filter || p.host?.toLowerCase().includes(filter.toLowerCase()) ||
+       p.name?.toLowerCase().includes(filter.toLowerCase()))
+    ), [problems, filter, minSev]);
+
+  const bySev = useMemo(() =>
+    problems.reduce((acc, p) => { acc[p.severity] = (acc[p.severity] || 0) + 1; return acc; }, {} as Record<number,number>),
+    [problems]);
+
+  const handleAck = async (p: any) => {
+    if (!p.event_id) { alert('Este problema no tiene event_id disponible'); return; }
+    setAcking(p.id);
+    try {
+      const r = await fetch(`${API_BASE}/api/nebula/ack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: p.event_id, message: 'Reconocido desde Nebula' }),
+      });
+      const d = await r.json();
+      if (d.ok) onReload();
+      else alert(`Error: ${d.error}`);
+    } catch (e) { alert('Error de red'); }
+    finally { setAcking(null); }
+  };
+
+  const handleTicket = async (p: any, notas: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/nebula/ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: p.host, problem_name: p.name, severity: p.severity, event_id: p.event_id || '', notas }),
+      });
+      const d = await r.json();
+      if (d.ok) { setTicketing(null); alert(`Ticket #${d.ticket_id} creado`); }
+      else alert(`Error: ${d.error}`);
+    } catch (e) { alert('Error de red'); }
+  };
+
+  const handleAlert = async (p: any, message: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/nebula/alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: p.host, message, severity: p.severity }),
+      });
+      const d = await r.json();
+      if (d.ok) { setAlerting(null); }
+      else alert(`Error: ${d.error}`);
+    } catch (e) { alert('Error de red'); }
+  };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10, overflow:'hidden', minHeight:0 }}>
+      {/* Severity KPIs + filter */}
+      <div style={{ display:'flex', gap:8, flexShrink:0, flexWrap:'wrap' }}>
+        {([5,4,3,2,1,0] as const).map(sev => {
+          const count = bySev[sev] || 0;
+          const color = SEV_COLOR[sev];
+          return (
+            <button key={sev} onClick={() => setMinSev(minSev === sev ? 0 : sev)} style={{
+              padding:'8px 14px', borderRadius:10, border:`1px solid ${color}${minSev === sev ? 'aa' : '30'}`,
+              background: minSev === sev ? `${color}20` : 'rgba(0,0,0,0.2)',
+              cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, minWidth:64,
+            }}>
+              <span style={{ fontSize:16, fontWeight:900, color, fontFamily:'monospace' }}>{count}</span>
+              <span style={{ fontSize:9, fontWeight:700, color, letterSpacing:1 }}>{SEV_LABEL[sev]}</span>
+            </button>
+          );
+        })}
+        <div style={{ flex:1, minWidth:160 }}>
+          <input value={filter} onChange={e => setFilter(e.target.value)}
+            placeholder="Filtrar host o problema…"
+            style={{ width:'100%', padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', boxSizing:'border-box' }}
+          />
+        </div>
+      </div>
+
+      {/* Problems table */}
+      <div style={{ flex:1, overflowY:'auto', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, fontFamily:'monospace' }}>
+          <thead>
+            <tr style={{ background:'rgba(0,0,0,0.4)', position:'sticky', top:0 }}>
+              {['Sev','Host','Problema','Hora','Acciones'].map(h => (
+                <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:DIM, fontWeight:700, fontSize:10, letterSpacing:1, borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:DIM }}>
+                {problems.length === 0 ? '✅ Sin problemas activos' : 'Sin resultados'}
+              </td></tr>
+            ) : filtered.map((p, i) => {
+              const color = SEV_COLOR[p.severity] || '#6b7280';
+              const ts = p.clock ? new Date(parseInt(p.clock) * 1000).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '?';
+              const isAcking = acking === p.id;
+              return (
+                <tr key={p.id} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
+                  <td style={{ padding:'7px 12px' }}>
+                    <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:10, background:`${color}20`, color, fontSize:9, fontWeight:700 }}>
+                      {p.severity_label}
+                    </span>
+                  </td>
+                  <td style={{ padding:'7px 12px', color:'#e2e8f0', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.host}</td>
+                  <td style={{ padding:'7px 12px', color:DIM, maxWidth:240, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</td>
+                  <td style={{ padding:'7px 12px', color:DIM, whiteSpace:'nowrap' }}>{ts}</td>
+                  <td style={{ padding:'7px 10px', whiteSpace:'nowrap' }}>
+                    <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+                      {p.acknowledged ? (
+                        <CheckCircle size={13} color={G} />
+                      ) : (
+                        <button onClick={() => handleAck(p)} disabled={isAcking}
+                          title="Reconocer en Zabbix"
+                          style={{ padding:'3px 8px', fontSize:9, fontWeight:700, borderRadius:6, border:`1px solid ${G}40`, background:`${G}10`, color:G, cursor:'pointer', opacity: isAcking ? 0.5 : 1 }}>
+                          {isAcking ? '…' : 'ACK'}
+                        </button>
+                      )}
+                      <button onClick={() => setTicketing(p)}
+                        title="Crear ticket en Odoo"
+                        style={{ padding:'3px 8px', fontSize:9, fontWeight:700, borderRadius:6, border:'1px solid rgba(96,165,250,0.4)', background:'rgba(96,165,250,0.1)', color:'#60a5fa', cursor:'pointer' }}>
+                        🎫
+                      </button>
+                      <button onClick={() => setAlerting(p)}
+                        title="Enviar alerta a Telegram"
+                        style={{ padding:'3px 8px', fontSize:9, fontWeight:700, borderRadius:6, border:'1px solid rgba(251,191,36,0.4)', background:'rgba(251,191,36,0.1)', color:'#fbbf24', cursor:'pointer' }}>
+                        📣
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ color:DIM, fontSize:10, textAlign:'right', flexShrink:0 }}>
+        {filtered.length} de {problems.length} problemas · Zabbix 7.0 · 30s
+      </div>
+
+      {/* Modal: crear ticket */}
+      {ticketing && (
+        <NebulaModal title={`Crear ticket — ${ticketing.host}`} onClose={() => setTicketing(null)}>
+          <TicketForm problem={ticketing} onSubmit={handleTicket} onCancel={() => setTicketing(null)} />
+        </NebulaModal>
+      )}
+
+      {/* Modal: enviar alerta */}
+      {alerting && (
+        <NebulaModal title={`Alerta Telegram — ${alerting.host}`} onClose={() => setAlerting(null)}>
+          <AlertForm problem={alerting} onSubmit={handleAlert} onCancel={() => setAlerting(null)} />
+        </NebulaModal>
+      )}
+    </div>
+  );
+}
+
+function NebulaModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:'#0d1117', border:'1px solid rgba(255,255,255,0.12)', borderRadius:16, padding:24, width:420, maxWidth:'90vw' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <span style={{ color:'#e2e8f0', fontWeight:700, fontSize:13 }}>{title}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:DIM, cursor:'pointer', fontSize:18 }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TicketForm({ problem, onSubmit, onCancel }: { problem: any; onSubmit: (p: any, notas: string) => void; onCancel: () => void }) {
+  const [notas, setNotas] = useState('');
+  const [loading, setLoading] = useState(false);
+  const color = SEV_COLOR[problem.severity] || '#6b7280';
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ padding:'8px 12px', background:`${color}10`, border:`1px solid ${color}30`, borderRadius:8, fontSize:11, fontFamily:'monospace' }}>
+        <span style={{ color }}>{SEV_EMOJI[problem.severity]} {problem.severity_label}</span>
+        <span style={{ color:DIM }}> · </span>
+        <span style={{ color:'#e2e8f0' }}>{problem.host}</span>
+        <div style={{ color:DIM, marginTop:4, fontSize:10 }}>{problem.name}</div>
+      </div>
+      <textarea value={notas} onChange={e => setNotas(e.target.value)}
+        placeholder="Notas adicionales (opcional)…"
+        rows={3}
+        style={{ padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', resize:'vertical' }}
+      />
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <button onClick={onCancel} style={{ padding:'7px 16px', background:'none', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:DIM, cursor:'pointer', fontSize:11 }}>Cancelar</button>
+        <button onClick={async () => { setLoading(true); await onSubmit(problem, notas); setLoading(false); }}
+          disabled={loading}
+          style={{ padding:'7px 16px', background:'rgba(96,165,250,0.2)', border:'1px solid rgba(96,165,250,0.4)', borderRadius:8, color:'#60a5fa', cursor:'pointer', fontWeight:700, fontSize:11, opacity: loading ? 0.5 : 1 }}>
+          {loading ? 'Creando…' : 'Crear ticket'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AlertForm({ problem, onSubmit, onCancel }: { problem: any; onSubmit: (p: any, message: string) => void; onCancel: () => void }) {
+  const [message, setMessage] = useState(`${problem.name} en ${problem.host}`);
+  const [loading, setLoading] = useState(false);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ fontSize:11, color:DIM }}>Se enviará al canal NOC de Telegram</div>
+      <input value={message} onChange={e => setMessage(e.target.value)}
+        style={{ padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace' }}
+      />
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <button onClick={onCancel} style={{ padding:'7px 16px', background:'none', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:DIM, cursor:'pointer', fontSize:11 }}>Cancelar</button>
+        <button onClick={async () => { setLoading(true); await onSubmit(problem, message); setLoading(false); }}
+          disabled={loading || !message.trim()}
+          style={{ padding:'7px 16px', background:'rgba(251,191,36,0.15)', border:'1px solid rgba(251,191,36,0.4)', borderRadius:8, color:'#fbbf24', cursor:'pointer', fontWeight:700, fontSize:11, opacity: loading ? 0.5 : 1 }}>
+          {loading ? 'Enviando…' : 'Enviar alerta'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Nebula: sub-tab Hosts ─────────────────────────────────────────────────────
+function NebulaHostsTab() {
+  const [hosts, setHosts]     = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/nebula/hosts?with_problems=true&limit=300`);
+      const d = await r.json();
+      setHosts(d.hosts || []);
+    } catch {}
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() =>
+    hosts.filter(h => !filter || h.name?.toLowerCase().includes(filter.toLowerCase()) || h.ip?.includes(filter)),
+    [hosts, filter]);
+
+  const up   = hosts.filter(h => h.available === 1).length;
+  const down = hosts.filter(h => h.available === 2).length;
+
+  if (loading) return <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:G }}><Loader size={20} style={{ animation:'spin 1s linear infinite' }} /></div>;
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10, overflow:'hidden', minHeight:0 }}>
+      <div style={{ display:'flex', gap:10, flexShrink:0, alignItems:'center' }}>
+        <span style={{ fontSize:11, color:G, fontWeight:700, fontFamily:'monospace' }}>{up} UP</span>
+        <span style={{ fontSize:11, color: down > 0 ? R : DIM, fontWeight:700, fontFamily:'monospace' }}>{down} DOWN</span>
+        <span style={{ fontSize:11, color:DIM, fontFamily:'monospace' }}>{hosts.length - up - down} UNKNOWN</span>
+        <div style={{ flex:1 }} />
+        <input value={filter} onChange={e => setFilter(e.target.value)}
+          placeholder="Filtrar…"
+          style={{ padding:'6px 10px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', width:180 }}
+        />
+        <button onClick={load} style={{ padding:'6px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, fontSize:10, color:DIM, cursor:'pointer' }}>↻</button>
+      </div>
+      <div style={{ flex:1, overflowY:'auto', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, fontFamily:'monospace' }}>
+          <thead>
+            <tr style={{ background:'rgba(0,0,0,0.4)', position:'sticky', top:0 }}>
+              {['Estado','Nombre','IP'].map(h => (
+                <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:DIM, fontWeight:700, fontSize:10, letterSpacing:1, borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((h, i) => {
+              const avail = h.available;
+              const c = avail === 1 ? G : avail === 2 ? R : DIM;
+              const label = avail === 1 ? 'UP' : avail === 2 ? 'DOWN' : '?';
+              return (
+                <tr key={h.id} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
+                  <td style={{ padding:'7px 12px' }}>
+                    <span style={{ padding:'2px 8px', borderRadius:10, background:`${c}20`, color:c, fontSize:9, fontWeight:700 }}>{label}</span>
+                  </td>
+                  <td style={{ padding:'7px 12px', color:'#e2e8f0', fontWeight:600 }}>{h.name}</td>
+                  <td style={{ padding:'7px 12px', color:DIM }}>{h.ip || '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ color:DIM, fontSize:10, textAlign:'right', flexShrink:0 }}>{filtered.length} de {hosts.length} hosts · Zabbix</div>
+    </div>
+  );
+}
+
+// ── Nebula: sub-tab Historial ─────────────────────────────────────────────────
+function NebulaHistorialTab() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [date, setDate]       = useState(todayStr);
+  const [events, setEvents]   = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter]   = useState('');
+  const [minSev, setMinSev]   = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/nebula/events/history?date=${date}&severity=${minSev}&limit=500`);
+      const d = await r.json();
+      setEvents(d.events || []);
+    } catch {}
+    finally { setLoading(false); }
+  }, [date, minSev]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() =>
+    events.filter(e => !filter || e.host?.toLowerCase().includes(filter.toLowerCase()) || e.name?.toLowerCase().includes(filter.toLowerCase())),
+    [events, filter]);
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10, overflow:'hidden', minHeight:0 }}>
+      <div style={{ display:'flex', gap:8, flexShrink:0, alignItems:'center', flexWrap:'wrap' }}>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} max={todayStr}
+          style={{ padding:'6px 10px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#fff', fontSize:11 }}
+        />
+        <select value={minSev} onChange={e => setMinSev(Number(e.target.value))}
+          style={{ padding:'6px 10px', background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#fff', fontSize:11 }}>
+          {[0,1,2,3,4,5].map(s => <option key={s} value={s}>{SEV_EMOJI[s]} {SEV_LABEL[s]}+</option>)}
+        </select>
+        <input value={filter} onChange={e => setFilter(e.target.value)}
+          placeholder="Filtrar…"
+          style={{ padding:'6px 10px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', flex:1, minWidth:120 }}
+        />
+        <button onClick={load} disabled={loading}
+          style={{ padding:'6px 14px', background:G, color:'#001a0d', borderRadius:8, border:'none', fontWeight:700, fontSize:11, cursor:'pointer', opacity: loading ? 0.5 : 1 }}>
+          {loading ? '…' : 'Buscar'}
+        </button>
+      </div>
+      <div style={{ flex:1, overflowY:'auto', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, fontFamily:'monospace' }}>
+          <thead>
+            <tr style={{ background:'rgba(0,0,0,0.4)', position:'sticky', top:0 }}>
+              {['Hora','Sev','Host','Evento','Estado'].map(h => (
+                <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:DIM, fontWeight:700, fontSize:10, letterSpacing:1, borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:DIM }}>
+                {loading ? 'Cargando…' : 'Sin eventos para este filtro'}
+              </td></tr>
+            ) : filtered.map((e, i) => {
+              const color = SEV_COLOR[e.severity] || '#6b7280';
+              const ts = e.clock ? new Date(e.clock * 1000).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '?';
+              const recovered = e.value === 0 || e.value === '0';
+              return (
+                <tr key={`${e.id}-${i}`} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)', opacity: recovered ? 0.55 : 1 }}>
+                  <td style={{ padding:'7px 12px', color:DIM, whiteSpace:'nowrap' }}>{ts}</td>
+                  <td style={{ padding:'7px 12px' }}>
+                    <span style={{ padding:'2px 8px', borderRadius:10, background:`${color}20`, color, fontSize:9, fontWeight:700 }}>{e.severity_label}</span>
+                  </td>
+                  <td style={{ padding:'7px 12px', color:'#e2e8f0', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.host}</td>
+                  <td style={{ padding:'7px 12px', color:DIM, maxWidth:260, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.name}</td>
+                  <td style={{ padding:'7px 12px' }}>
+                    {recovered
+                      ? <span style={{ color:G, fontSize:9, fontWeight:700 }}>OK</span>
+                      : <span style={{ color, fontSize:9, fontWeight:700 }}>PROB</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ color:DIM, fontSize:10, textAlign:'right', flexShrink:0 }}>{filtered.length} de {events.length} eventos</div>
+    </div>
+  );
+}
 
 function NebulaPanelView() {
   const [status, setStatus]     = useState<any>(null);
   const [problems, setProblems] = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [filter, setFilter]     = useState('');
-  const [minSev, setMinSev]     = useState(0);
+  const [nebulaTab, setNebulaTab] = useState<'problemas' | 'hosts' | 'historial'>('problemas');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1762,17 +2151,6 @@ function NebulaPanelView() {
 
   useEffect(() => { load(); }, [load]);
   useVisibleInterval(load, 30_000);
-
-  const filtered = useMemo(() =>
-    problems.filter(p =>
-      p.severity >= minSev &&
-      (!filter || p.host?.toLowerCase().includes(filter.toLowerCase()) ||
-       p.name?.toLowerCase().includes(filter.toLowerCase()))
-    ), [problems, filter, minSev]);
-
-  const bySev = useMemo(() =>
-    problems.reduce((acc, p) => { acc[p.severity] = (acc[p.severity] || 0) + 1; return acc; }, {} as Record<number,number>),
-    [problems]);
 
   if (loading) return (
     <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color: G }}>
@@ -1794,95 +2172,53 @@ function NebulaPanelView() {
     </div>
   );
 
+  const NEBULA_TABS = [
+    { id: 'problemas', label: 'Problemas', icon: AlertTriangle },
+    { id: 'hosts',     label: 'Hosts',     icon: Server },
+    { id: 'historial', label: 'Historial', icon: Activity },
+  ] as const;
+
   return (
-    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:12, overflow:'hidden', minHeight:0 }}>
-      {/* Header Nebula */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
-        <div style={{ display:'flex', gap:10 }}>
-          <div style={{ padding:'6px 14px', background:'rgba(0,255,136,0.08)', border:`1px solid ${G}30`, borderRadius:20, fontSize:10, fontWeight:700, color:G, fontFamily:'monospace' }}>
-            ⚡ ZABBIX {status.zabbix?.hosts} hosts
-          </div>
-          <div style={{ padding:'6px 14px', background: status.grafana?.connected ? 'rgba(96,165,250,0.08)' : 'rgba(255,51,102,0.08)', border:`1px solid ${status.grafana?.connected ? '#60a5fa' : R}30`, borderRadius:20, fontSize:10, fontWeight:700, color: status.grafana?.connected ? '#60a5fa' : R, fontFamily:'monospace' }}>
-            📊 GRAFANA {status.grafana?.connected ? 'OK' : 'OFFLINE'}
-          </div>
+    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10, overflow:'hidden', minHeight:0 }}>
+      {/* Header: status pills + actions */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0, flexWrap:'wrap' }}>
+        <div style={{ padding:'5px 12px', background:'rgba(0,255,136,0.08)', border:`1px solid ${G}30`, borderRadius:16, fontSize:10, fontWeight:700, color:G, fontFamily:'monospace' }}>
+          ⚡ ZABBIX {status.zabbix?.hosts} hosts · {status.zabbix?.problems} problemas
+        </div>
+        <div style={{ padding:'5px 12px', background: status.grafana?.connected ? 'rgba(96,165,250,0.08)' : 'rgba(255,51,102,0.08)', border:`1px solid ${status.grafana?.connected ? '#60a5fa' : R}30`, borderRadius:16, fontSize:10, fontWeight:700, color: status.grafana?.connected ? '#60a5fa' : R, fontFamily:'monospace' }}>
+          📊 GRAFANA {status.grafana?.connected ? 'OK' : 'OFFLINE'}
         </div>
         <div style={{ flex:1 }} />
-        {/* Grafana link */}
         {status.grafana?.connected && (
-          <a href={status.grafana.url} target="_blank" rel="noreferrer" style={{ padding:'6px 14px', background:'rgba(96,165,250,0.1)', border:'1px solid rgba(96,165,250,0.2)', borderRadius:8, fontSize:10, fontWeight:700, color:'#60a5fa', textDecoration:'none' }}>
-            Abrir Grafana ↗
+          <a href={status.grafana.url} target="_blank" rel="noreferrer" style={{ padding:'5px 12px', background:'rgba(96,165,250,0.1)', border:'1px solid rgba(96,165,250,0.2)', borderRadius:8, fontSize:10, fontWeight:700, color:'#60a5fa', textDecoration:'none' }}>
+            Grafana ↗
           </a>
         )}
-        <button onClick={load} style={{ padding:'6px 14px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, fontSize:10, color:DIM, cursor:'pointer' }}>
-          ↻ Actualizar
-        </button>
+        <button onClick={load} style={{ padding:'5px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, fontSize:10, color:DIM, cursor:'pointer' }}>↻</button>
       </div>
 
-      {/* Severity KPIs */}
-      <div style={{ display:'flex', gap:8, flexShrink:0, flexWrap:'wrap' }}>
-        {([5,4,3,2,1,0] as const).map(sev => {
-          const count = bySev[sev] || 0;
-          const color = SEV_COLOR[sev];
+      {/* Sub-tabs */}
+      <div style={{ display:'flex', gap:4, flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:8 }}>
+        {NEBULA_TABS.map(({ id, label, icon: Icon }) => {
+          const active = nebulaTab === id;
           return (
-            <button key={sev} onClick={() => setMinSev(minSev === sev ? 0 : sev)} style={{
-              padding:'8px 14px', borderRadius:10, border:`1px solid ${color}${minSev === sev ? 'aa' : '30'}`,
-              background: minSev === sev ? `${color}20` : 'rgba(0,0,0,0.2)',
-              cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, minWidth:72,
+            <button key={id} onClick={() => setNebulaTab(id)} style={{
+              padding:'6px 16px', fontSize:10, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
+              background: active ? 'rgba(0,255,136,0.15)' : 'rgba(255,255,255,0.04)',
+              color: active ? G : DIM,
+              borderBottom: active ? `2px solid ${G}` : '2px solid transparent',
+              display:'flex', alignItems:'center', gap:5, transition:'all 0.15s',
             }}>
-              <span style={{ fontSize:18, fontWeight:900, color, fontFamily:'monospace' }}>{count}</span>
-              <span style={{ fontSize:9, fontWeight:700, color, letterSpacing:1 }}>{SEV_LABEL[sev]}</span>
+              <Icon size={11} />{label}
             </button>
           );
         })}
-        <div style={{ flex:1, minWidth:160 }}>
-          <input
-            value={filter} onChange={e => setFilter(e.target.value)}
-            placeholder="Filtrar host o problema…"
-            style={{ width:'100%', padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#fff', fontSize:11, fontFamily:'monospace', boxSizing:'border-box' }}
-          />
-        </div>
       </div>
 
-      {/* Problems table */}
-      <div style={{ flex:1, overflowY:'auto', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, fontFamily:'monospace' }}>
-          <thead>
-            <tr style={{ background:'rgba(0,0,0,0.4)', position:'sticky', top:0 }}>
-              {['Severidad','Host','Problema','Hora','ACK'].map(h => (
-                <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:DIM, fontWeight:700, fontSize:10, letterSpacing:1, borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:DIM }}>
-                {problems.length === 0 ? '✅ Sin problemas activos' : 'Sin resultados para el filtro'}
-              </td></tr>
-            ) : filtered.map((p, i) => {
-              const color = SEV_COLOR[p.severity] || '#6b7280';
-              const ts = p.clock ? new Date(parseInt(p.clock) * 1000).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '?';
-              return (
-                <tr key={p.id} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
-                  <td style={{ padding:'7px 12px' }}>
-                    <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:10, background:`${color}20`, color, fontSize:9, fontWeight:700, letterSpacing:1 }}>
-                      {p.severity_label}
-                    </span>
-                  </td>
-                  <td style={{ padding:'7px 12px', color:'#e2e8f0', fontWeight:600, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.host}</td>
-                  <td style={{ padding:'7px 12px', color:DIM, maxWidth:280, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</td>
-                  <td style={{ padding:'7px 12px', color:DIM, whiteSpace:'nowrap' }}>{ts}</td>
-                  <td style={{ padding:'7px 12px', textAlign:'center' }}>
-                    {p.acknowledged ? <CheckCircle size={13} color={G} /> : <span style={{ color:DIM, fontSize:10 }}>—</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ color:DIM, fontSize:10, textAlign:'right', flexShrink:0 }}>
-        {filtered.length} de {problems.length} problemas · Zabbix 7.0 · Actualiza cada 30s
-      </div>
+      {/* Tab content */}
+      {nebulaTab === 'problemas' && <NebulaProblemasTab problems={problems} onReload={load} />}
+      {nebulaTab === 'hosts'     && <NebulaHostsTab />}
+      {nebulaTab === 'historial' && <NebulaHistorialTab />}
     </div>
   );
 }

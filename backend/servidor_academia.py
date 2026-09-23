@@ -13839,15 +13839,83 @@ async def nebula_status():
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
+@app.get("/api/nebula/events/history")
+async def nebula_events_history(
+    date: str = "",          # YYYY-MM-DD, defaults to today
+    host_name: str = "",     # filtro opcional por nombre de host
+    severity: int = 0,       # 0=all 1=info 2=warn 3=avg 4=high 5=disaster
+    limit: int = 500
+):
+    """Historial de eventos Zabbix para una fecha. Zabbix 7.0 no soporta time_to
+    en event.get, así que filtramos el día siguiente en Python."""
+    import datetime as _dt
+    try:
+        if date:
+            day_start = _dt.datetime.strptime(date, "%Y-%m-%d")
+        else:
+            day_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + _dt.timedelta(days=1)
+        t_from = int(day_start.timestamp())
+        t_end  = int(day_end.timestamp())
+
+        params: dict = {
+            "output": ["eventid", "clock", "name", "severity", "value"],
+            "selectHosts": ["hostid", "name"],
+            "time_from": t_from,
+            "sortfield": "clock",
+            "sortorder": "ASC",
+            "limit": 10000,
+        }
+        if severity > 0:
+            params["severities"] = list(range(severity, 6))
+        # Si hay filtro de host, primero resolvemos el hostid para que Zabbix
+        # filtre en servidor (evita traer miles de eventos y descartar en Python)
+        if host_name:
+            host_search = _zabbix("host.get", {
+                "output": ["hostid", "name"],
+                "search": {"name": host_name},
+                "searchCaseSensitive": False,
+                "limit": 50,
+            })
+            if host_search:
+                params["hostids"] = [h["hostid"] for h in host_search]
+                params.pop("limit", None)
+                params["limit"] = 5000
+
+        all_evts = _zabbix("event.get", params)
+        SEV_LABEL = {0:"NC",1:"Info",2:"Warning",3:"Average",4:"High",5:"Disaster"}
+        result = []
+        for e in all_evts:
+            clk = int(e.get("clock", 0))
+            if clk < t_from or clk >= t_end:
+                continue
+            host = (e.get("hosts") or [{}])[0].get("name", "?")
+            sev = int(e.get("severity", 0))
+            result.append({
+                "id":       e.get("eventid"),
+                "clock":    clk,
+                "iso":      _dt.datetime.fromtimestamp(clk).isoformat(),
+                "name":     e.get("name"),
+                "severity": sev,
+                "severity_label": SEV_LABEL.get(sev, "?"),
+                "value":    e.get("value"),   # "1"=problem "0"=recovered
+                "host":     host,
+            })
+            if len(result) >= limit:
+                break
+        return {"date": day_start.strftime("%Y-%m-%d"), "events": result, "count": len(result)}
+    except Exception as exc:
+        return {"date": date, "events": [], "count": 0, "error": str(exc)}
+
 @app.get("/api/nebula/problems")
 async def nebula_problems(limit: int = 200, min_severity: int = 0):
     try:
         SEV = {0:"NC", 1:"Info", 2:"Warning", 3:"Average", 4:"High", 5:"Disaster"}
         SEV_COLOR = {0:"#6b7280", 1:"#60a5fa", 2:"#facc15", 3:"#f97316", 4:"#ef4444", 5:"#dc2626"}
-        # Zabbix 7: usar trigger.get con value=1 (activo) + selectHosts
         params = {
             "output": ["triggerid", "description", "priority", "lastchange"],
             "selectHosts": ["hostid", "host", "name"],
+            "selectLastEvent": ["eventid", "acknowledged"],
             "only_true": True,
             "monitored": True,
             "active": True,
@@ -13866,8 +13934,12 @@ async def nebula_problems(limit: int = 200, min_severity: int = 0):
             if sev < min_severity:
                 continue
             hosts = t.get("hosts", [])
+            last_evt = t.get("lastEvent") or {}
+            event_id  = last_evt.get("eventid")
+            acked     = str(last_evt.get("acknowledged", "0")) == "1"
             result.append({
                 "id": t.get("triggerid"),
+                "event_id": event_id,
                 "name": t.get("description"),
                 "severity": sev,
                 "severity_label": SEV.get(sev, "?"),
@@ -13875,7 +13947,7 @@ async def nebula_problems(limit: int = 200, min_severity: int = 0):
                 "clock": t.get("lastchange"),
                 "host": hosts[0].get("name") if hosts else "?",
                 "host_id": hosts[0].get("hostid") if hosts else None,
-                "acknowledged": False,
+                "acknowledged": acked,
             })
         return {"problems": result, "count": len(result)}
     except Exception as e:
@@ -13924,6 +13996,134 @@ async def nebula_grafana_dashboards():
         return {"dashboards": boards, "grafana_url": _NEBULA_GRAFANA_URL}
     except Exception as e:
         return {"dashboards": [], "error": str(e)}
+
+class NebulaAckReq(BaseModel):
+    event_id: str
+    message: str = "Reconocido desde Nebula"
+
+@app.post("/api/nebula/ack")
+async def nebula_ack(req: NebulaAckReq, user: dict = Depends(get_current_user)):
+    """Acknowledges a Zabbix event. Returns {ok, acknowledged_by}."""
+    try:
+        user_label = user.get("nombre", user.get("username", "NOC"))
+        full_msg = f"[{user_label}] {req.message}"
+        result = _zabbix("event.acknowledge", {
+            "eventids": [req.event_id],
+            "action": 6,      # 2=ack + 4=add_message
+            "message": full_msg,
+        })
+        if result is None:
+            return {"ok": False, "error": "Sin respuesta de Zabbix"}
+        return {"ok": True, "acknowledged_by": user_label}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class NebulaTicketReq(BaseModel):
+    host: str
+    problem_name: str
+    severity: int = 3
+    event_id: str = ""
+    notas: str = ""
+
+@app.post("/api/nebula/ticket")
+async def nebula_crear_ticket(req: NebulaTicketReq, user: dict = Depends(get_current_user)):
+    """Crea ticket de helpdesk en Odoo desde un problema Nebula/Zabbix y notifica Telegram."""
+    import xmlrpc.client as _xrc, os as _os, re as _re, httpx as _hx
+    SEV_LABEL = {0:"NC", 1:"Info", 2:"Warning", 3:"Average", 4:"High", 5:"Disaster"}
+    SEV_PRIO  = {0:"0", 1:"0", 2:"0", 3:"1", 4:"1", 5:"1"}
+    try:
+        HOST = _os.getenv("ODOO_URL", "").rstrip("/")
+        DB   = _os.getenv("ODOO_DB", "wispi19")
+        U    = _os.getenv("ODOO_USER", "")
+        P    = _os.getenv("ODOO_PASSWORD", "")
+        if not HOST:
+            return {"ok": False, "error": "ODOO_URL no configurado"}
+        common = _xrc.ServerProxy(f"{HOST}/xmlrpc/2/common", allow_none=True)
+        uid_o  = common.authenticate(DB, U, P, {})
+        m      = _xrc.ServerProxy(f"{HOST}/xmlrpc/2/object", allow_none=True)
+        creado_por = user.get("nombre", user.get("username", "NOC"))
+        sev_label  = SEV_LABEL.get(req.severity, str(req.severity))
+        titulo = f"[NOC Nebula] {req.host} — {req.problem_name[:80]}"
+        descripcion = (
+            f"Problema detectado en Nebula/Zabbix\n\n"
+            f"Host: {req.host}\n"
+            f"Problema: {req.problem_name}\n"
+            f"Severidad: {sev_label}\n"
+            f"Event ID: {req.event_id or 'N/A'}\n"
+            f"Creado por: {creado_por}\n"
+        )
+        if req.notas:
+            descripcion += f"\nNotas: {req.notas}"
+        ticket_vals = {
+            "name":        titulo,
+            "description": descripcion,
+            "team_id":     6,   # NOC/CAST
+            "priority":    SEV_PRIO.get(req.severity, "0"),
+        }
+        ticket_id = m.execute_kw(DB, uid_o, P, "helpdesk.ticket", "create", [ticket_vals])
+        # Telegram
+        tg_token = _os.getenv("TELEGRAM_BOT_TOKEN", "")
+        tg_chat  = _os.getenv("TELEGRAM_CHAT_ID_REPORTES", "") or _os.getenv("TELEGRAM_CHAT_ID", "")
+        if tg_token and tg_chat:
+            def _esc(s): return _re.sub(r'([*_`\[\]])', r'\\\1', str(s))
+            emoji = {0:"⚪",1:"🔵",2:"🟡",3:"🟠",4:"🔴",5:"⛔"}.get(req.severity, "🔴")
+            msg = (
+                f"🎫 *Ticket NOC creado desde Nebula*\n\n"
+                f"🖥️ *Host:* `{_esc(req.host)}`\n"
+                f"{emoji} *Severidad:* {sev_label}\n"
+                f"📋 *Problema:* `{_esc(req.problem_name[:80])}`\n"
+                f"👤 *Creado por:* {_esc(creado_por)}\n"
+                f"🔗 [Ver ticket](https://odoo.wispi.mx/odoo/helpdesk/{ticket_id})"
+            )
+            try:
+                _hx.post(
+                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    json={"chat_id": tg_chat, "text": msg, "parse_mode": "Markdown"},
+                    timeout=8,
+                )
+            except Exception:
+                pass
+        return {"ok": True, "ticket_id": ticket_id, "titulo": titulo}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class NebulaAlertReq(BaseModel):
+    host: str
+    message: str
+    severity: int = 4
+
+@app.post("/api/nebula/alert")
+async def nebula_send_alert(req: NebulaAlertReq, user: dict = Depends(get_current_user)):
+    """Envía alerta manual a Telegram desde Nebula."""
+    import os as _os, httpx as _hx, re as _re
+    SEV_LABEL = {0:"NC",1:"Info",2:"Warning",3:"Average",4:"High",5:"Disaster"}
+    try:
+        tg_token = _os.getenv("TELEGRAM_BOT_TOKEN", "")
+        tg_chat  = _os.getenv("TELEGRAM_CHAT_ID_REPORTES", "") or _os.getenv("TELEGRAM_CHAT_ID", "")
+        if not tg_token or not tg_chat:
+            return {"ok": False, "error": "Telegram no configurado"}
+        def _esc(s): return _re.sub(r'([*_`\[\]])', r'\\\1', str(s))
+        sent_by = user.get("nombre", user.get("username", "NOC"))
+        emoji = {0:"⚪",1:"🔵",2:"🟡",3:"🟠",4:"🔴",5:"⛔"}.get(req.severity, "🔴")
+        sev_label = SEV_LABEL.get(req.severity, str(req.severity))
+        msg = (
+            f"{emoji} *Alerta Manual — Nebula NOC*\n\n"
+            f"🖥️ *Host:* `{_esc(req.host)}`\n"
+            f"📣 *Severidad:* {sev_label}\n"
+            f"💬 *Mensaje:* {_esc(req.message)}\n"
+            f"👤 *Enviado por:* {_esc(sent_by)}"
+        )
+        r = _hx.post(
+            f"https://api.telegram.org/bot{tg_token}/sendMessage",
+            json={"chat_id": tg_chat, "text": msg, "parse_mode": "Markdown"},
+            timeout=8,
+        )
+        return {"ok": r.status_code == 200}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 
 # ─── SPA Fallback ─────────────────────────────────────────────────────────────
 
