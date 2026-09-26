@@ -80,6 +80,7 @@ const UsuariosAdminSection      = lazy(() => import('./sections/UsuariosAdminSec
 const UsuariosInvitadosSection  = lazy(() => import('./sections/UsuariosInvitadosSection'));
 const ATCEfectividadSection     = lazy(() => import('./sections/ATCEfectividadSection'));
 const BacklogSection            = lazy(() => import('./sections/BacklogSection'));
+const DispatchSection           = lazy(() => import('./sections/DispatchSection'));
 const CallCenter         = lazy(() => import('../CallCenter'));
 const Gerencia           = lazy(() => import('../Gerencia'));
 const ReportesGobierno   = lazy(() => import('../ReportesGobierno'));
@@ -108,13 +109,13 @@ const ROLE_SECTIONS: Record<string, SectionId[] | '*'> = {
               'rrhh','sala_juntas','proyectos','plan2026','fibra','radiobases',
               'agentes','comite','docs','analytics',
               'blackstone','fibra_xcien','flotilla','wfm','bidrillas',
-              'usuarios-invitados','atc-efectividad'],
+              'usuarios-invitados','atc-efectividad','dispatch'],
 
   // ══ PAC ÁREA 1 — OPERACIONES ════════════════════════════════════════════
   operaciones: ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops','backlog',
-                'docs','sala_juntas','radiobases','blackstone','cast','auditorias-plazas'],
+                'docs','sala_juntas','radiobases','blackstone','cast','auditorias-plazas','dispatch'],
   wfm:         ['inicio','wfm','bidrillas','scan','inv-transfers','mesa-ops','backlog',
-                'docs','sala_juntas','radiobases','blackstone','cast'],
+                'docs','sala_juntas','radiobases','blackstone','cast','dispatch'],
 
   // ══ PAC ÁREA 2 — NOC ════════════════════════════════════════════════════
   noc:        ['inicio','noc','cast','mesa-ops','infra-energia','incidentes',
@@ -206,6 +207,7 @@ const NAV: NavEntry[] = [
 
   // ── Campo & Inventario ─────────────────────────────────────────────────────
   { id: 'wfm',           label: 'Control Operativo',    icon: '⚙️', group: 'Campo & Inventario' },
+  { id: 'dispatch',      label: 'Dispatch',             icon: '📬', group: 'Campo & Inventario' },
   { id: 'bidrillas',     label: 'Equipos de Campo',     icon: '🚛', group: 'Campo & Inventario' },
   { id: 'call',          label: 'Call Center',          icon: '📞', group: 'Campo & Inventario' },
   { id: 'scan',          label: 'Inventario & Scanner', icon: '🔍', group: 'Campo & Inventario' },
@@ -343,6 +345,7 @@ const SECTION_TITLE: Record<SectionId, string> = {
   'atc-efectividad': 'Efectividad ATC',
   impacto:           'Reporte de Impacto',
   backlog:           'Backlog Operativo',
+  dispatch:          'Dispatch — CAE Operaciones',
 };
 
 // ── UISP color constants ──────────────────────────────────────────────────────
@@ -792,6 +795,7 @@ function Content({
       {section === 'sync'     && <SyncSection />}
       {section === 'academia' && <AcademiaSection theme={theme} activeThemeId={activeThemeId} />}
       {section === 'wfm'      && <WFMSection      theme={theme} activeThemeId={activeThemeId} />}
+      {section === 'dispatch' && <DispatchSection theme={theme} />}
       {section === 'bidrillas' && <BidrillasSection theme={theme} />}
       {section === 'rrhh'      && <RRHHSection      theme={theme} />}
       {section === 'sala_juntas' && <SalaJuntasSection theme={theme} />}

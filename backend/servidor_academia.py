@@ -9132,7 +9132,7 @@ async def _call_claude(api_key: str, system: str, messages: list, temperature: f
 
 _VAULT_PATH = _Path(os.environ.get(
     "XCIEN_VAULT_PATH",
-    str(_Path.home() / "Documents" / "XCIEN-Vault")
+    str(_Path.home() / "Documents" / "xcien" / "XCIEN-Vault")
 ))
 _CEREBRO_DIR  = _VAULT_PATH / "00-Cerebro"
 _MASTER_FILE  = _CEREBRO_DIR / "contexto-maestro.md"
@@ -14123,6 +14123,95 @@ async def nebula_send_alert(req: NebulaAlertReq, user: dict = Depends(get_curren
         return {"ok": r.status_code == 200}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ─── Dispatch CAE — carga de trabajo por persona (Odoo project.task) ──────────
+
+DISPATCH_PERSONAS = [
+    {"uid": 638, "nombre": "Anel Alcaraz",    "email": "anel.alcaraz@wispi.mx"},
+    {"uid": 790, "nombre": "Alejandra Mora",  "email": "alejandra.mora@wispi.mx"},
+    {"uid": 266, "nombre": "Martin Castillo", "email": "martin.castillo@xcien.com"},
+    {"uid": 874, "nombre": "Ana Karen Garza", "email": "ana.garza@wispi.mx"},
+]
+DISPATCH_CERRADO = ["Cerrado", "Cancelado", "Terminada", "Terminado", "Done",
+                    "Cancelled", "CANCELADO", "TERMINADO"]
+
+_dispatch_cache: dict = {"ts": 0, "data": None}
+_DISPATCH_TTL      = 300   # 5 min
+_DISPATCH_BUDGET   = 25    # s — corta antes del timeout de 30s del cliente
+_DISPATCH_MAX_OPEN = 2000  # tope del search_read de abiertas
+
+
+def _dispatch_tarea(t: dict) -> dict:
+    # date_deadline es Datetime en este Odoo ("2025-12-06 20:00:00") → recortar a fecha
+    return {
+        "id":       t["id"],
+        "nombre":   t.get("name") or "",
+        "etapa":    t["stage_id"][1] if t.get("stage_id") else "Sin etapa",
+        "deadline": (t.get("date_deadline") or "")[:10] or None,
+        "proyecto": t["project_id"][1] if t.get("project_id") else "Sin proyecto",
+    }
+
+
+@app.get("/api/dispatch/equipo")
+def api_dispatch_equipo(_user: dict = Depends(get_current_user)):
+    """Carga de trabajo del equipo CAE en Odoo. Solo lectura, cache 5 min."""
+    from collections import Counter
+
+    if time.time() - _dispatch_cache["ts"] < _DISPATCH_TTL and _dispatch_cache["data"]:
+        return _dispatch_cache["data"]
+
+    hoy    = dt_datetime.now().strftime("%Y-%m-%d")
+    limite = (dt_datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    inicio = time.monotonic()
+    personas: list = []
+    error = None
+
+    for p in DISPATCH_PERSONAS:
+        if time.monotonic() - inicio > _DISPATCH_BUDGET:
+            error = f"Odoo tardó más de {_DISPATCH_BUDGET}s; quedaron personas sin consultar"
+            break
+
+        dom = [["user_ids", "in", [p["uid"]]]]
+        total = odoo_conn.execute("project.task", "search_count", dom)
+        rows  = odoo_conn.execute(
+            "project.task", "search_read",
+            dom + [["stage_id.name", "not in", DISPATCH_CERRADO]],
+            fields=["name", "stage_id", "date_deadline", "project_id"],
+            limit=_DISPATCH_MAX_OPEN,
+        )
+        if total is None or rows is None:
+            error = f"Odoo no respondió para {p['nombre']} (ver log ODOO-CONNECTOR)"
+            break
+
+        tareas   = [_dispatch_tarea(t) for t in rows]
+        vencidas = sorted((t for t in tareas if t["deadline"] and t["deadline"] < hoy),
+                          key=lambda t: t["deadline"])
+        proximas = sorted((t for t in tareas if t["deadline"] and hoy <= t["deadline"] <= limite),
+                          key=lambda t: t["deadline"])
+
+        persona = {
+            **p,
+            "total":           total,
+            "abiertas":        len(tareas),
+            "vencidas":        len(vencidas),
+            "por_etapa":       dict(Counter(t["etapa"] for t in tareas).most_common()),
+            "tareas_vencidas": vencidas[:20],
+            "tareas_proximas": proximas[:10],
+        }
+        # ponytail: un solo search_read alimenta abiertas/vencidas/por_etapa.
+        # Si alguien pasa el tope, los conteos son piso y no exacto — se avisa.
+        if len(rows) >= _DISPATCH_MAX_OPEN:
+            persona["truncado"] = True
+        personas.append(persona)
+
+    if error:
+        logger.warning(f"/api/dispatch/equipo: {error}")
+        return {"error": error, "personas": []}
+
+    out = {"corte": hoy, "personas": personas}
+    _dispatch_cache.update(ts=time.time(), data=out)
+    return out
 
 
 # ─── SPA Fallback ─────────────────────────────────────────────────────────────

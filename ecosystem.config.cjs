@@ -1,5 +1,6 @@
 const path = require('path');
 const ROOT = __dirname;
+const PYTHON = path.join(ROOT, '.venv/bin/python3');
 
 module.exports = {
   apps: [
@@ -7,7 +8,7 @@ module.exports = {
     {
       name: 'xcien-backend',
       script: 'backend/servidor_academia.py',
-      interpreter: '.venv/bin/python3',
+      interpreter: PYTHON,
       cwd: ROOT,
       instances: 1,
       autorestart: true,
@@ -51,7 +52,7 @@ module.exports = {
     {
       name: 'xcien-agente-odoo',
       script: 'agente_odoo.py',
-      interpreter: '.venv/bin/python3',
+      interpreter: PYTHON,
       cwd: ROOT,
       instances: 1,
       autorestart: true,
@@ -70,7 +71,7 @@ module.exports = {
     {
       name: 'xcien-telegram-bot',
       script: 'backend/agents/telegram_agent_bot.py',
-      interpreter: '.venv/bin/python3',
+      interpreter: PYTHON,
       cwd: ROOT,
       instances: 1,
       autorestart: true,

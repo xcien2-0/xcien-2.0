@@ -84,6 +84,7 @@ VAULT_INCLUDE = [
     "06 - Infraestructura",
     "NOC",
     "Plaza-PDN",
+    "_wiki/wiki",       # conocimiento procesado: ventas, FO, procesos, entidades
 ]
 
 def _read_vault_notes(max_chars_per_note=3000) -> dict[str, str]:
@@ -244,6 +245,49 @@ def fetch_academia(models, uid, db, pw) -> str:
 
     return "\n".join(lines) + "\n"
 
+def fetch_equipo_cae(models, uid, db, pw) -> str:
+    """Estado de tareas del equipo CAE Operaciones — 4 personas clave."""
+    from collections import Counter
+    from datetime import date
+
+    PERSONAS = [
+        (638, "Anel Alcaraz"),
+        (790, "Alejandra Mora"),
+        (266, "Martin Castillo"),
+        (874, "Ana Karen Garza"),
+    ]
+    TODAY = date.today().isoformat()
+    CERRADO = ["Cerrado", "Cancelado", "Terminada", "Terminado", "Done", "Cancelled"]
+
+    try:
+        lines = [f"**Equipo CAE Operaciones — corte {TODAY}**\n"]
+        alertas = []
+
+        for p_uid, label in PERSONAS:
+            total = models.execute_kw(db, uid, pw, "project.task", "search_count",
+                [[["user_ids", "in", [p_uid]]]], {})
+            abiertas = models.execute_kw(db, uid, pw, "project.task", "search_count",
+                [[["user_ids", "in", [p_uid]],
+                  ["stage_id.name", "not in", CERRADO]]], {})
+            vencidas = models.execute_kw(db, uid, pw, "project.task", "search_count",
+                [[["user_ids", "in", [p_uid]],
+                  ["stage_id.name", "not in", CERRADO],
+                  ["date_deadline", "<", TODAY]]], {})
+
+            pct = round(vencidas / abiertas * 100) if abiertas else 0
+            alerta = " ⚠️ BACKLOG CRÍTICO" if pct >= 30 else ""
+            lines.append(f"- **{label}**: {total} total · {abiertas} abiertas · {vencidas} vencidas ({pct}%){alerta}")
+            if alerta:
+                alertas.append(f"{label}: {vencidas} vencidas de {abiertas} abiertas ({pct}%)")
+
+        if alertas:
+            lines.append(f"\n**Alertas:** {'; '.join(alertas)}")
+
+        return "\n".join(lines) + "\n"
+    except Exception as e:
+        return f"_Sin datos equipo CAE: {e}_\n"
+
+
 # ── Vault note builder ────────────────────────────────────────────────────────
 
 def _write_snapshot(name: str, title: str, content: str) -> Path:
@@ -284,7 +328,8 @@ def build_master(sections: dict[str, str]) -> str:
         ("empleados-snapshot", "## 👤 Directorio de Empleados"),
         ("ventas-snapshot",    "## 💰 Ventas — Últimos 90 Días"),
         ("inventario-snapshot","## 📦 Inventario"),
-        ("academia-snapshot",  "## 🎓 Academia"),
+        ("academia-snapshot",   "## 🎓 Academia"),
+        ("equipo-cae-snapshot","## 👥 Equipo CAE Operaciones"),
         ("vault-notas",        "## 📚 Notas del Vault Obsidian"),
     ]
     for key, heading in order:
@@ -331,6 +376,10 @@ def main():
         print("  Leyendo Academia…")
         sections["academia-snapshot"] = fetch_academia(models, uid, db, pw)
         _write_snapshot("academia-snapshot", "Academia XCIEN", sections["academia-snapshot"])
+
+        print("  Leyendo Equipo CAE…")
+        sections["equipo-cae-snapshot"] = fetch_equipo_cae(models, uid, db, pw)
+        _write_snapshot("equipo-cae-snapshot", "Equipo CAE Operaciones", sections["equipo-cae-snapshot"])
     else:
         print("⚠️  Sin conexión a Odoo — omitiendo snapshots. Usando solo vault.\n")
         for key in ["wfm-snapshot", "empleados-snapshot", "ventas-snapshot",
